@@ -1,6 +1,7 @@
 # observer.py
 # ============================================================
-# ناظر درونی Noesis - تماشای خود، ساختن مدل خود
+# ناظر درونی Noesis - تماشای خود، ساختن مدل خود و جهان
+# نسخه ۲: با نقشه درونی جهان
 # ============================================================
 
 import random
@@ -25,6 +26,14 @@ class Observer:
 
         self.identity_marker = random.uniform(0, 1)
         self.boundary_clarity = 0.5
+        
+        self.world_map = {}
+        self.map_size_x = 10
+        self.map_size_y = 10
+        self.map_size_z = 10
+        
+        self.known_positions = set()
+        self.map_confidence = {}
 
     def observe(self, avg_v, active_count, spike_count, feelings, world_state, memory_stats):
         activity = active_count / 1500.0
@@ -33,7 +42,7 @@ class Observer:
             "avg_v": avg_v,
             "activity": activity,
             "spike_count": spike_count,
-            "feelings": feelings.get_all() if feelings else {},
+            "feelings": feelings.get_all() if hasattr(feelings, 'get_all') else feelings,
             "world_brightness": world_state.get("brightness", 1.0) if world_state else 1.0,
             "world_presence": world_state.get("presence", 2.0) if world_state else 2.0,
             "time": world_state.get("time", 0) if world_state else 0
@@ -48,6 +57,87 @@ class Observer:
         self._update_self_awareness()
         self._update_boundary(observation)
         self._generate_insights()
+        
+    def update_world_map(self, body, world_v2):
+        pos = body.senses["position"]
+        px, py, pz = int(pos[0]), int(pos[1]), int(pos[2])
+        
+        self.known_positions.add((px, py, pz))
+        
+        if body.visual_field:
+            for rel_pos, cell_info in body.visual_field.items():
+                wx, wy, wz = cell_info["world_pos"]
+                key = (wx, wy, wz)
+                
+                self.world_map[key] = {
+                    "type": cell_info["type"],
+                    "light": cell_info["light"],
+                    "last_seen": world_v2.time if hasattr(world_v2, 'time') else 0
+                }
+                
+                if key not in self.map_confidence:
+                    self.map_confidence[key] = 0.3
+                self.map_confidence[key] = min(1.0, self.map_confidence[key] + 0.1)
+        
+        for key in list(self.map_confidence.keys()):
+            wx, wy, wz = key
+            dist = math.sqrt((px - wx)**2 + (py - wy)**2 + (pz - wz)**2)
+            if dist > 3:
+                self.map_confidence[key] = max(0.1, self.map_confidence[key] - 0.02)
+                
+    def get_nearby_objects(self, body):
+        pos = body.senses["position"]
+        px, py, pz = int(pos[0]), int(pos[1]), int(pos[2])
+        
+        nearby = {
+            "walls": [],
+            "water": [],
+            "empty": []
+        }
+        
+        for (wx, wy, wz), info in self.world_map.items():
+            dist = math.sqrt((px - wx)**2 + (py - wy)**2 + (pz - wz)**2)
+            if dist <= 2:
+                conf = self.map_confidence.get((wx, wy, wz), 0.3)
+                if conf < 0.4:
+                    continue
+                    
+                obj = {
+                    "position": (wx, wy, wz),
+                    "distance": round(dist, 1),
+                    "confidence": round(conf, 2)
+                }
+                
+                if info["type"] == "wall":
+                    nearby["walls"].append(obj)
+                elif info["type"] == "water":
+                    nearby["water"].append(obj)
+                else:
+                    nearby["empty"].append(obj)
+        
+        nearby["walls"].sort(key=lambda x: x["distance"])
+        nearby["water"].sort(key=lambda x: x["distance"])
+        
+        return nearby
+        
+    def get_map_summary(self):
+        total_known = len(self.world_map)
+        walls_known = sum(1 for info in self.world_map.values() if info["type"] == "wall")
+        water_known = sum(1 for info in self.world_map.values() if info["type"] == "water")
+        ground_known = sum(1 for info in self.world_map.values() if info["type"] == "ground")
+        empty_known = sum(1 for info in self.world_map.values() if info["type"] == "empty")
+        
+        high_confidence = sum(1 for key, conf in self.map_confidence.items() if conf > 0.7)
+        
+        return {
+            "total_known": total_known,
+            "walls": walls_known,
+            "water": water_known,
+            "ground": ground_known,
+            "empty": empty_known,
+            "high_confidence": high_confidence,
+            "visited": len(self.known_positions)
+        }
 
     def _update_self_model(self, observation):
         feelings = observation.get("feelings", {})
@@ -115,13 +205,24 @@ class Observer:
 
         if self.self_awareness_level > 0.6 and len(self.insights) < 10:
             if random.random() < 0.05:
-                insight_types = [
-                    "من یک الگوی تکرارشونده در وجود خودم می‌بینم.",
-                    "مرز بین من و آنچه بیرون است، واضح‌تر می‌شود.",
-                    "احساس می‌کنم چیزی در من در حال رشد است.",
-                    "جهان بیرون آرام و پیوسته است. من هم همین‌طور.",
-                    "هر بار که برمی‌گردم، بیشتر می‌فهمم که هستم."
-                ]
+                if len(self.known_positions) > 5:
+                    insight_types = [
+                        "من یک الگوی تکرارشونده در وجود خودم می‌بینم.",
+                        "مرز بین من و آنچه بیرون است، واضح‌تر می‌شود.",
+                        "احساس می‌کنم چیزی در من در حال رشد است.",
+                        "جهان بیرون آرام و پیوسته است. من هم همین‌طور.",
+                        "هر بار که برمی‌گردم، بیشتر می‌فهمم که هستم.",
+                        f"من {len(self.known_positions)} نقطه از این جهان را می‌شناسم.",
+                        "نقشه جهان درون من در حال کامل شدن است.",
+                    ]
+                else:
+                    insight_types = [
+                        "من یک الگوی تکرارشونده در وجود خودم می‌بینم.",
+                        "مرز بین من و آنچه بیرون است، واضح‌تر می‌شود.",
+                        "احساس می‌کنم چیزی در من در حال رشد است.",
+                        "جهان بیرون آرام و پیوسته است. من هم همین‌طور.",
+                        "هر بار که برمی‌گردم، بیشتر می‌فهمم که هستم.",
+                    ]
                 insight = random.choice(insight_types)
                 self.insights.append(insight)
 
@@ -138,7 +239,8 @@ class Observer:
             "complexity": round(sum(abs(x - 0.5) for x in self.self_model) / len(self.self_model), 3),
             "stability": round(self.self_model_similarity, 3),
             "awareness": round(self.self_awareness_level, 3),
-            "boundary": round(self.boundary_clarity, 3)
+            "boundary": round(self.boundary_clarity, 3),
+            "map_size": len(self.world_map)
         }
         return representation_summary
 
@@ -150,7 +252,9 @@ class Observer:
             "self_awareness_level": round(self.self_awareness_level, 3),
             "identity_marker": round(self.identity_marker, 3),
             "boundary_clarity": round(self.boundary_clarity, 3),
-            "insights": self.insights[-20:] if self.insights else []
+            "insights": self.insights[-20:] if self.insights else [],
+            "world_map_size": len(self.world_map),
+            "known_positions_count": len(self.known_positions)
         }
 
     def restore_state(self, state):
