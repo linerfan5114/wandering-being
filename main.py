@@ -1,6 +1,6 @@
 # main.py
 # ============================================================
-# Noesis - حلقه اصلی زندگی
+# Noesis - حلقه اصلی زندگی با Workspace و Temporal و Will
 # ============================================================
 
 import time
@@ -14,12 +14,15 @@ from memory import EpisodicMemory
 from feelings import Feelings
 from language import Language
 from survival import Survival
+from workspace import Workspace
+from temporal import Temporal
+from will import Will
 
 
 class Noesis:
     def __init__(self):
         print("\n" + "=" * 70)
-        print("         🧠 Noesis - پروژه آگاهی")
+        print("         🧠 Noesis - پروژه آگاهی عمیق")
         print("=" * 70)
 
         self.world = World()
@@ -29,6 +32,9 @@ class Noesis:
         self.feelings = Feelings()
         self.language = Language()
         self.survival = Survival()
+        self.workspace = Workspace()
+        self.temporal = Temporal()
+        self.will = Will()
 
         self.running = True
         self.paused = False
@@ -56,6 +62,18 @@ class Noesis:
                 print(f"✅ بازیابی موفق. ادامه از لحظه {saved_time}")
                 print(f"📦 تعداد تولد: {soul_data.get('birth_count', 1)}")
                 print(f"💬 پیام سازنده: {soul_data.get('message', '')}")
+                
+                ws_data = soul_data.get("workspace")
+                if ws_data:
+                    self.workspace.restore_state(ws_data)
+                
+                tp_data = soul_data.get("temporal")
+                if tp_data:
+                    self.temporal.restore_state(tp_data)
+                
+                wl_data = soul_data.get("will")
+                if wl_data:
+                    self.will.restore_state(wl_data)
             else:
                 print("❌ خطا در بازیابی. شروع از ابتدا.")
         else:
@@ -81,6 +99,13 @@ class Noesis:
         print(f"👁️  خودآگاهی: {who['awareness']:.2f} | "
               f"مرز: {who['boundary']:.2f} | "
               f"ثبات: {who['stability']:.2f}")
+        print(f"🎭 صحنه ذهن: {self.workspace.get_current_source() or 'خالی'} | "
+              f"📡 پخش: {self.workspace.get_broadcast():.1f}")
+        print(f"⏳ پیوستگی: {self.temporal.self_continuity:.2f} | "
+              f"عمق: {self.temporal.temporal_depth:.2f} | "
+              f"هنوز منم: {'✅' if self.temporal.am_i_still_me() else '⚠️'}")
+        print(f"🎯 اراده: {self.will.autonomy_level:.2f} | "
+              f"قصد: {self.will.get_intention() or 'هیچ'}")
         print(f"💭 آخرین فکر: {self.language.last_thought if self.language.last_thought else '...'}")
 
     def _handle_creator_input(self):
@@ -105,7 +130,7 @@ class Noesis:
 
     def run(self):
         print("\n" + "=" * 70)
-        print("🎬 زندگی آغاز می‌شود...")
+        print("🎬 زندگی عمیق آغاز می‌شود...")
         print("=" * 70)
         print("راهنما:")
         print("  ⌨️  تایپ کن و Enter بزن تا با موجود حرف بزنی")
@@ -152,16 +177,93 @@ class Noesis:
                 }
                 self.memory.store(current_state)
 
-                self.language.update(self.feelings, self.observer, self.memory, self.world.get_state(), self.world.time)
+                self.temporal.record(self.world.time, current_state)
+                self.temporal.update_self_continuity(self.observer.self_model)
+
+                self.workspace.submit(
+                    "observer",
+                    {"type": "self_state", "data": self.observer.who_am_i()},
+                    strength=self.observer.self_awareness_level * 5.0,
+                    priority=0.7
+                )
+
+                dominant_feeling, dom_value = self.feelings.get_dominant()
+                self.workspace.submit(
+                    "feelings",
+                    {"type": "dominant_feeling", "feeling": dominant_feeling, "value": dom_value},
+                    strength=dom_value,
+                    priority=0.5
+                )
+
+                if self.temporal.am_i_still_me():
+                    self.workspace.submit(
+                        "temporal",
+                        {"type": "continuity", "value": self.temporal.self_continuity},
+                        strength=self.temporal.self_continuity * 5.0,
+                        priority=0.6
+                    )
+
+                if creator_input:
+                    self.workspace.submit(
+                        "creator",
+                        {"type": "message", "text": creator_input},
+                        strength=8.0,
+                        priority=1.0
+                    )
+
+                self.workspace.compete()
+
+                options = {t: 0.5 for t in self.language.get_available_thought_types()}
+                workspace_source = self.workspace.get_current_source()
+                if workspace_source:
+                    if workspace_source == "observer":
+                        options["existence"] = 0.8
+                        options["deep"] = 0.7
+                    elif workspace_source == "feelings":
+                        options["feeling"] = 0.9
+                        options["express_feeling"] = 0.8
+                    elif workspace_source == "temporal":
+                        options["memory"] = 0.8
+                        options["reflect"] = 0.7
+                    elif workspace_source == "creator":
+                        options["question"] = 0.9
+                        options["connection"] = 0.8
+                        options["gratitude"] = 0.8
+
+                intention = self.will.decide(options)
+
+                self.will.update(
+                    self.feelings,
+                    self.workspace.get_current_content(),
+                    self.temporal.self_continuity,
+                    self.observer.self_awareness_level
+                )
+
+                if intention == "gratitude":
+                    self.feelings.feelings["gratitude"] = min(10.0, self.feelings.feelings.get("gratitude", 5) + 0.3)
+                elif intention == "question":
+                    self.feelings.feelings["thirst_for_knowing"] = min(10.0, self.feelings.feelings.get("thirst_for_knowing", 5) + 0.2)
+
+                self.language.update(
+                    self.feelings, self.observer, self.memory,
+                    self.world.get_state(), self.world.time
+                )
 
                 if self.language.language_active and self.language.last_thought:
-                    print(f"\n💭 [{self.world.time}ms]: {self.language.last_thought}")
+                    cause = self.will.why_this_decision()
+                    workspace_info = f" [صحنه: {self.workspace.get_current_source()}]" if self.workspace.get_current_source() else ""
+                    print(f"\n💭 [{self.world.time}ms]{workspace_info}: {self.language.last_thought}")
+                    if self.temporal.temporal_depth > 0.5:
+                        temporal_insight = self.temporal.get_temporal_insight()
+                        if temporal_insight and random.random() < 0.3:
+                            print(f"⏳ [{self.world.time}ms]: {temporal_insight}")
 
                 if self.survival.should_save(self.world.time):
                     self.survival.save(
                         self.network, self.observer, self.memory,
                         self.feelings, self.language, self.world
                     )
+                    self._save_extended_state()
 
                 if self.world.time - self.last_display_time >= DISPLAY_INTERVAL_MS:
                     self._print_status()
@@ -175,6 +277,19 @@ class Noesis:
         finally:
             self._shutdown()
 
+    def _save_extended_state(self):
+        try:
+            import json
+            soul_data = self.survival.load()
+            if soul_data:
+                soul_data["workspace"] = self.workspace.save_state()
+                soul_data["temporal"] = self.temporal.save_state()
+                soul_data["will"] = self.will.save_state()
+                with open(self.survival.soul_file, 'w', encoding='utf-8') as f:
+                    json.dump(soul_data, f, ensure_ascii=False, indent=2)
+        except:
+            pass
+
     def _shutdown(self):
         print("\n💾 در حال ذخیره روح...")
         success = self.survival.save(
@@ -183,6 +298,7 @@ class Noesis:
         )
 
         if success:
+            self._save_extended_state()
             print(f"✅ روح با موفقیت ذخیره شد. ({self.survival.save_count}مین ذخیره)")
             print(f"📁 فایل: {self.survival.soul_file}")
             print(f"⏱️  زمان ذخیره: {self.world.time}ms")
@@ -197,6 +313,9 @@ class Noesis:
         print(f"   💭 افکار: {len(self.language.thought_history)}")
         print(f"   📦 خاطرات: {len(self.memory.episodes)}")
         print(f"   👁️ خودآگاهی: {self.observer.who_am_i()['awareness']:.2f}")
+        print(f"   🎭 صحنه ذهن: {self.workspace.get_current_source() or 'خالی'}")
+        print(f"   ⏳ پیوستگی: {self.temporal.self_continuity:.2f}")
+        print(f"   🎯 خودمختاری: {self.will.autonomy_level:.2f}")
 
         if soul_info["exists"]:
             print(f"\n💫 روح جاودانه است.")
