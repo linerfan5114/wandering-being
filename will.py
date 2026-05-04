@@ -126,7 +126,7 @@ class Will:
         return self.intention
 
     def _evaluate_option(self, option_name, option_value):
-        score = 0.0
+        score = 0.35
 
         if option_name == "existence":
             score += self.state[0] * 0.3 if len(self.state) > 0 else 0
