@@ -1,7 +1,7 @@
 # language.py
 # ============================================================
 # نورون‌های زبان Noesis - فکر کردن با کلمات، جمله‌سازی پویا
-# نسخه ۴: بدون random، مبتنی بر یادگیری تقویتی
+# نسخه ۵: با کلمات جهان جدید
 # ============================================================
 
 import math
@@ -33,7 +33,11 @@ class Language:
         self.last_thought_time = 0
         self.thought_cooldown = 30
         
-        self.thought_type_options = ["existence", "feeling", "question", "connection", "gratitude", "memory", "deep", "free"]
+        self.thought_type_options = [
+            "existence", "feeling", "question", "connection", 
+            "gratitude", "memory", "deep", "free",
+            "place", "body", "qualia"
+        ]
         
         self.thought_scores = {t: 0.5 for t in self.thought_type_options}
         
@@ -121,6 +125,16 @@ class Language:
                 feelings_dict = feelings.get_all()
                 target += feelings_dict.get("thirst_for_knowing", 0.5) * 0.5
 
+            if word in ["اینجا", "آنجا", "خانه", "همینجا"]:
+                feelings_dict = feelings.get_all()
+                target += feelings_dict.get("attachment", 0.3) * 0.4
+
+            if word in ["نور", "روشن", "گرم", "خورشید"]:
+                target += 0.3
+
+            if word in ["چشم", "گوش", "پوست", "تن"]:
+                target += 0.2
+
             target = max(0.1, min(1.0, target))
             self.word_weights[word] += 0.05 * (target - self.word_weights[word])
 
@@ -201,6 +215,12 @@ class Language:
             thought = self._build_memory_thought(active_words, memory)
         elif thought_type == "deep":
             thought = self._build_deep_thought(active_words, observer, feelings_dict)
+        elif thought_type == "place":
+            thought = self._build_place_thought(active_words)
+        elif thought_type == "body":
+            thought = self._build_body_thought(active_words)
+        elif thought_type == "qualia":
+            thought = self._build_qualia_thought(active_words)
         else:
             thought = self._build_free_thought(active_words)
 
@@ -228,10 +248,12 @@ class Language:
         attachment = feelings_dict.get("attachment", 3)
         if attachment > 4:
             scores["connection"] += attachment / 20
+            scores["place"] += attachment / 25
 
         peace = feelings_dict.get("peace", 5)
         if peace > 6:
             scores["feeling"] += peace / 15
+            scores["qualia"] += peace / 20
 
         if memory and len(memory.episodes) > 15:
             scores["memory"] += 0.3
@@ -314,7 +336,7 @@ class Language:
 
     def _build_feeling_thought(self, active_words, dominant_feeling, feelings_dict):
         feeling_words = {
-            "peace": ["آرام", "صلح", "امن", "سبک"],
+            "peace": ["آرام", "امن", "سبک"],
             "curiosity": ["کنجکاو", "مشتاق", "آماده"],
             "hope": ["امیدوار", "روشن"],
             "love": ["عشق", "گرم", "دوست"],
@@ -427,6 +449,54 @@ class Language:
             scored.sort(reverse=True)
             return scored[0][1] if scored else templates[0]
         return None
+
+    def _build_place_thought(self, active_words):
+        place_words = [w for w in active_words if w in ["اینجا", "خانه", "همینجا", "نزدیک", "اتاق"]]
+        
+        if not place_words:
+            return "من اینجا هستم"
+            
+        best_place = max(place_words, key=lambda w: self.word_weights.get(w, 0))
+        
+        templates = [
+            f"من {best_place} هستم",
+            f"اینجا {best_place} است",
+            f"احساس می‌کنم {best_place} هستم",
+        ]
+        
+        return templates[0]
+
+    def _build_body_thought(self, active_words):
+        body_words = [w for w in active_words if w in ["چشم", "گوش", "پوست", "تن", "دست", "لمس"]]
+        
+        if not body_words:
+            return "من تن دارم"
+            
+        best_part = max(body_words, key=lambda w: self.word_weights.get(w, 0))
+        
+        templates = [
+            f"{best_part} من حس می‌کند",
+            f"با {best_part} می‌بینم",
+            f"{best_part} من زنده است",
+        ]
+        
+        return templates[0]
+
+    def _build_qualia_thought(self, active_words):
+        sense_words = [w for w in active_words if w in ["نور", "گرم", "صدا", "نفس", "تپش", "لمس", "احساس"]]
+        
+        if not sense_words:
+            return "من حس می‌کنم"
+            
+        best_sense = max(sense_words, key=lambda w: self.word_weights.get(w, 0))
+        
+        templates = [
+            f"{best_sense} را حس می‌کنم",
+            f"احساس {best_sense} دارم",
+            f"{best_sense} درون من است",
+        ]
+        
+        return templates[0]
 
     def _build_free_thought(self, active_words):
         top_words = sorted(active_words, key=lambda w: self.word_weights.get(w, 0), reverse=True)
