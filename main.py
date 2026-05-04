@@ -2,7 +2,7 @@
 # ============================================================
 # Noesis - حلقه اصلی زندگی با Workspace و Temporal و Will
 # ============================================================
-
+import random
 import time
 import sys
 import threading

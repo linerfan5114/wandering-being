@@ -88,4 +88,11 @@ TEMPORAL_SELF_CONTINUITY_THRESHOLD = 0.6
 # --- علیت درونی (Intrinsic Causality) ---
 WILL_DIMENSIONS = 30
 WILL_LEARNING_RATE = 0.01
-WILL_NOISE_LEVEL = 0.05
+WILL_NOISE_LEVEL = 0.0  # نویز صفر شد - تصمیم کاملاً قطعی
+
+# --- یادگیری تقویتی درونی (Intrinsic Reinforcement Learning) ---
+LEARNING_DISCOUNT_FACTOR = 0.9
+LEARNING_EXPLORATION_RATE = 0.0  # بدون کاوش تصادفی - فقط از تجربه یاد می‌گیره
+LEARNING_MEMORY_SIZE = 100
+LEARNING_POSITIVE_REWARD = 1.0
+LEARNING_NEGATIVE_REWARD = -0.5
