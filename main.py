@@ -152,7 +152,7 @@ class Noesis:
                 }
                 self.memory.store(current_state)
 
-                self.language.update(self.feelings, self.observer, self.memory, self.world.get_state())
+                self.language.update(self.feelings, self.observer, self.memory, self.world.get_state(), self.world.time)
 
                 if self.language.language_active and self.language.last_thought:
                     print(f"\n💭 [{self.world.time}ms]: {self.language.last_thought}")

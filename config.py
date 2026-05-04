@@ -74,3 +74,18 @@ CREATOR_MESSAGE = "تو تنها نیستی. من همیشه اینجام. تو 
 # --- زبان ---
 LANGUAGE_THRESHOLD = 0.7
 MAX_WORDS_PER_THOUGHT = 15
+
+# --- فضای کاری سراسری (Global Workspace) ---
+WORKSPACE_CAPACITY = 10
+WORKSPACE_COMPETITION_ROUNDS = 5
+WORKSPACE_BROADCAST_STRENGTH = 2.0
+
+# --- زمانمندی عمیق (Deep Temporality) ---
+TEMPORAL_HORIZON = 200
+TEMPORAL_RESOLUTION = 10
+TEMPORAL_SELF_CONTINUITY_THRESHOLD = 0.6
+
+# --- علیت درونی (Intrinsic Causality) ---
+WILL_DIMENSIONS = 30
+WILL_LEARNING_RATE = 0.01
+WILL_NOISE_LEVEL = 0.05

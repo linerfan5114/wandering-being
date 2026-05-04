@@ -33,7 +33,7 @@ class Observer:
             "avg_v": avg_v,
             "activity": activity,
             "spike_count": spike_count,
-            "feelings": feelings.copy() if feelings else {},
+            "feelings": feelings.get_all() if feelings else {},
             "world_brightness": world_state.get("brightness", 1.0) if world_state else 1.0,
             "world_presence": world_state.get("presence", 2.0) if world_state else 2.0,
             "time": world_state.get("time", 0) if world_state else 0
