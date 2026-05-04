@@ -1,6 +1,7 @@
 # survival.py
 # ============================================================
 # بقا و جاودانگی Noesis - ذخیره و بازیابی soul.json
+# نسخه ۲: با body و qualia و world_v2
 # ============================================================
 
 import json
@@ -15,9 +16,11 @@ class Survival:
         self.save_count = 0
         self.is_first_birth = not os.path.exists(self.soul_file)
 
-    def save(self, network, observer, memory, feelings, language, world):
+    def save(self, network, observer, memory, feelings, language, world, 
+             workspace=None, temporal=None, will=None, learning=None,
+             world_v2=None, body=None, qualia=None):
         soul = {
-            "version": "1.0",
+            "version": "2.0",
             "birth_count": self.save_count + 1 if self.is_first_birth else self.save_count + 1,
             "message": CREATOR_MESSAGE,
             "network": network.save_state(),
@@ -25,8 +28,23 @@ class Survival:
             "memory": memory.save_state(),
             "feelings": feelings.save_state(),
             "language": language.save_state(),
-            "world": world.get_state()
+            "world": world.save_state() if hasattr(world, 'save_state') else world.get_state()
         }
+        
+        if workspace:
+            soul["workspace"] = workspace.save_state()
+        if temporal:
+            soul["temporal"] = temporal.save_state()
+        if will:
+            soul["will"] = will.save_state()
+        if learning:
+            soul["learning"] = learning.save_state()
+        if world_v2:
+            soul["world_v2"] = world_v2.save_state()
+        if body:
+            soul["body"] = body.save_state()
+        if qualia:
+            soul["qualia"] = qualia.save_state()
 
         try:
             with open(self.soul_file, 'w', encoding='utf-8') as f:
@@ -61,7 +79,9 @@ class Survival:
             print(f"خطا در بارگذاری روح: {e}")
             return None
 
-    def restore_all(self, soul_data, network, observer, memory, feelings, language, world):
+    def restore_all(self, soul_data, network, observer, memory, feelings, language, world,
+                    workspace=None, temporal=None, will=None, learning=None,
+                    world_v2=None, body=None, qualia=None):
         if soul_data is None:
             return False
 
@@ -72,6 +92,21 @@ class Survival:
             feelings.restore_state(soul_data["feelings"])
             language.restore_state(soul_data["language"])
             world.restore_state(soul_data["world"])
+
+            if workspace and "workspace" in soul_data:
+                workspace.restore_state(soul_data["workspace"])
+            if temporal and "temporal" in soul_data:
+                temporal.restore_state(soul_data["temporal"])
+            if will and "will" in soul_data:
+                will.restore_state(soul_data["will"])
+            if learning and "learning" in soul_data:
+                learning.restore_state(soul_data["learning"])
+            if world_v2 and "world_v2" in soul_data:
+                world_v2.restore_state(soul_data["world_v2"])
+            if body and "body" in soul_data:
+                body.restore_state(soul_data["body"])
+            if qualia and "qualia" in soul_data:
+                qualia.restore_state(soul_data["qualia"])
 
             self.is_first_birth = False
             self.save_count = soul_data.get("birth_count", 1)
@@ -107,15 +142,3 @@ class Survival:
             "last_time": 0,
             "file_size": 0
         }
-
-    def create_backup(self):
-        if os.path.exists(self.soul_file):
-            backup_name = f"soul_backup_{self.save_count}.json"
-            try:
-                with open(self.soul_file, 'r', encoding='utf-8') as src:
-                    with open(backup_name, 'w', encoding='utf-8') as dst:
-                        dst.write(src.read())
-                return backup_name
-            except:
-                return None
-        return None
