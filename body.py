@@ -1,6 +1,7 @@
 # body.py
 # ============================================================
-# بدن Noesis - حواس، موقعیت، حرکت در جهان
+# بدن Noesis - حواس، موقعیت، حرکت، چشم فضایی
+# نسخه ۲: با میدان دید ۳ بعدی
 # ============================================================
 
 import math
@@ -37,6 +38,9 @@ class Body:
             "comfort": 0.5
         }
         
+        self.visual_field = {}
+        self.visual_field_size = 1
+        
         self.sense_history = []
         self.max_history = 50
         
@@ -46,6 +50,7 @@ class Body:
     def update(self, world):
         self._update_position(world)
         self._update_senses(world)
+        self._update_visual_field(world)
         self._update_internal_rhythms()
         
         self.sense_history.append(self.senses.copy())
@@ -71,6 +76,47 @@ class Body:
             self.y = BODY_START_Y
             self.z = BODY_START_Z
             
+    def _update_visual_field(self, world):
+        self.visual_field = {}
+        
+        r = self.visual_field_size
+        
+        for dx in range(-r, r + 1):
+            for dy in range(-r, r + 1):
+                for dz in range(-r, r + 1):
+                    wx = int(self.x) + dx
+                    wy = int(self.y) + dy
+                    wz = int(self.z) + dz
+                    
+                    if not world.is_inside(wx, wy, wz):
+                        continue
+                    
+                    light = world.get_light_at(wx, wy, wz)
+                    is_wall = world._is_near_wall(wx, wy)
+                    is_water = world._is_near_water(wx, wy)
+                    
+                    cell_type = "empty"
+                    if is_wall:
+                        cell_type = "wall"
+                    elif is_water:
+                        cell_type = "water"
+                    elif wz == 0:
+                        cell_type = "ground"
+                    
+                    sun_dist = math.sqrt(
+                        (wx - world.objects["sun"]["position"][0])**2 +
+                        (wy - world.objects["sun"]["position"][1])**2 +
+                        (wz - world.objects["sun"]["position"][2])**2
+                    )
+                    
+                    key = (dx, dy, dz)
+                    self.visual_field[key] = {
+                        "world_pos": (wx, wy, wz),
+                        "light": round(light, 3),
+                        "type": cell_type,
+                        "sun_distance": round(sun_dist, 1)
+                    }
+        
     def _update_senses(self, world):
         self.senses["sight"] = world.get_light_at(self.x, self.y, self.z + 1) * self.eye_sensitivity
         self.senses["sight"] = max(0.0, min(1.0, self.senses["sight"]))
@@ -89,6 +135,14 @@ class Body:
         self.senses["near_water"] = world._is_near_water(self.x, self.y)
         self.senses["near_wall"] = world._is_near_wall(self.x, self.y)
         
+        visual_cells = len(self.visual_field)
+        self.senses["visual_cells"] = visual_cells
+        
+        wall_cells = sum(1 for v in self.visual_field.values() if v["type"] == "wall")
+        water_cells = sum(1 for v in self.visual_field.values() if v["type"] == "water")
+        self.senses["walls_visible"] = wall_cells
+        self.senses["water_visible"] = water_cells
+        
         comfort = 0.5
         comfort += (self.senses["sight"] - 0.5) * 0.3
         comfort += (self.senses["hearing"] - 0.3) * 0.2
@@ -103,11 +157,13 @@ class Body:
         
     def get_sense_signal(self):
         signal = (
-            self.senses["sight"] * 0.3 +
-            self.senses["hearing"] * 0.2 +
-            self.senses["touch"] * 0.2 +
-            (self.senses["temperature"] - 20.0) / 20.0 * 0.15 +
-            self.senses["comfort"] * 0.15
+            self.senses["sight"] * 0.25 +
+            self.senses["hearing"] * 0.15 +
+            self.senses["touch"] * 0.15 +
+            (self.senses["temperature"] - 20.0) / 20.0 * 0.10 +
+            self.senses["comfort"] * 0.15 +
+            (self.senses.get("walls_visible", 0) / 27.0) * 0.10 +
+            (self.senses.get("water_visible", 0) / 27.0) * 0.10
         )
         return signal
         
@@ -121,7 +177,10 @@ class Body:
             "comfort": round(self.senses["comfort"], 3),
             "on_ground": self.senses["on_ground"],
             "near_water": self.senses["near_water"],
-            "near_wall": self.senses["near_wall"]
+            "near_wall": self.senses["near_wall"],
+            "visual_cells": self.senses.get("visual_cells", 0),
+            "walls_visible": self.senses.get("walls_visible", 0),
+            "water_visible": self.senses.get("water_visible", 0)
         }
         
     def save_state(self):
