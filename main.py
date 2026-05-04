@@ -225,7 +225,7 @@ class Noesis:
 
                 self.workspace.compete()
 
-                options = {t: 0.5 for t in self.language.get_available_thought_types()}
+                options = {t: 0.8 for t in self.language.get_available_thought_types()}
                 workspace_source = self.workspace.get_current_source()
                 if workspace_source:
                     if workspace_source == "observer":

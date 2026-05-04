@@ -21,7 +21,7 @@ class Will:
         self.intention_strength = 0.0
         self.intention_history = []
 
-        self.decision_threshold = 0.5
+        self.decision_threshold = 0.3
         self.volatility = 0.1
 
         self.autonomy_level = 0.0
@@ -101,7 +101,7 @@ class Will:
         best_option = max(scores, key=scores.get)
         best_score = scores[best_option]
 
-        if best_score > self.decision_threshold:
+        if best_score >= self.decision_threshold:
             self.intention = best_option
             self.intention_strength = best_score
             self.last_decision_cause = f"internal_preference:{best_option}"
