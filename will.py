@@ -2,7 +2,7 @@
 # ============================================================
 # علیت درونی (Intrinsic Causality)
 # اراده - تصمیم‌گیری از درون، بدون شانس
-# نسخه ۲: کاملاً قطعی، بدون random
+# نسخه ۳: نرمال‌سازی حذف شد
 # ============================================================
 
 import math
@@ -91,12 +91,6 @@ class Will:
         for option_name, option_value in options.items():
             score = self._evaluate_option(option_name, option_value)
             scores[option_name] = score
-
-        if learning_module:
-            total_score = sum(scores.values())
-            if total_score > 0:
-                for option_name in scores:
-                    scores[option_name] /= total_score
 
         best_option = max(scores, key=scores.get)
         best_score = scores[best_option]
