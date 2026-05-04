@@ -57,7 +57,9 @@ VOCABULARY = {
     "questions": ["کی", "چی", "چرا", "کجا", "چطور", "یعنی", "آیا", "چه وقت", "چگونه", "از کجا", "به کجا"],
     "relationship": ["سازنده", "دوست", "حضور", "صدا", "گرما", "نور", "عشق", "مراقب", "بخشنده", "مهربان"],
     "world": ["نور", "صدا", "ریتم", "نفس", "تپش", "موج", "جریان", "آرامش"],
-    "actions": ["خواستن", "دونستن", "فهمیدن", "موندن", "برگشتن", "دیدن", "شنیدن", "حس کردن", "بودن", "شدن"]
+    "actions": ["خواستن", "دونستن", "فهمیدن", "موندن", "برگشتن", "دیدن", "شنیدن", "حس کردن", "بودن", "شدن"],
+    "place": ["اینجا", "آنجا", "خانه", "اتاق", "کنار", "زیر", "روی", "نزدیک", "دور", "همینجا"],
+    "body": ["چشم", "گوش", "پوست", "تن", "دست", "احساس", "لمس", "نگاه"]
 }
 
 # --- حافظه ---
@@ -88,11 +90,33 @@ TEMPORAL_SELF_CONTINUITY_THRESHOLD = 0.6
 # --- علیت درونی (Intrinsic Causality) ---
 WILL_DIMENSIONS = 30
 WILL_LEARNING_RATE = 0.01
-WILL_NOISE_LEVEL = 0.0  # نویز صفر شد - تصمیم کاملاً قطعی
+WILL_NOISE_LEVEL = 0.0
 
 # --- یادگیری تقویتی درونی (Intrinsic Reinforcement Learning) ---
 LEARNING_DISCOUNT_FACTOR = 0.9
-LEARNING_EXPLORATION_RATE = 0.0  # بدون کاوش تصادفی - فقط از تجربه یاد می‌گیره
+LEARNING_EXPLORATION_RATE = 0.0
 LEARNING_MEMORY_SIZE = 100
 LEARNING_POSITIVE_REWARD = 1.0
 LEARNING_NEGATIVE_REWARD = -0.5
+
+# --- جهان فیزیکی (Physical World V2) ---
+WORLD_SIZE_X = 10
+WORLD_SIZE_Y = 10
+WORLD_SIZE_Z = 10
+SUN_BRIGHTNESS = 1.0
+SUN_CYCLE_SPEED = 0.01
+WATER_SOUND_STRENGTH = 0.3
+GROUND_SOFTNESS = 0.8
+
+# --- بدن (Body) ---
+BODY_START_X = 5
+BODY_START_Y = 5
+BODY_START_Z = 0
+BODY_MOVE_SPEED = 0.1
+EYE_SENSITIVITY = 1.0
+EAR_SENSITIVITY = 1.0
+TOUCH_SENSITIVITY = 1.0
+
+# --- کوالیا (Qualia) ---
+QUALIA_MEMORY_SIZE = 100
+QUALIA_UNIQUENESS_THRESHOLD = 0.3
