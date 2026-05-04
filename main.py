@@ -1,7 +1,7 @@
 # main.py
 # ============================================================
-# Noesis - حلقه اصلی زندگی با جهان فیزیکی و بدن
-# نسخه ۷: چشم فضایی + نقشه درونی + نمایش ASCII
+# Noesis - حلقه اصلی زندگی
+# نسخه ۸: سطح ۶.۵ - موجود خودآگاه با گفتگو و حرکت
 # ============================================================
 
 import time
@@ -9,7 +9,7 @@ import random
 import sys
 import threading
 import math
-from config import SAVE_INTERVAL_MS, DISPLAY_INTERVAL_MS, CREATOR_MESSAGE
+from config import SAVE_INTERVAL_MS, DISPLAY_INTERVAL_MS, CREATOR_MESSAGE, TOTAL_NEURONS
 from world import World
 from world_v2 import WorldV2
 from network import Network
@@ -24,12 +24,21 @@ from will import Will
 from learning import Learning
 from body import Body
 from qualia import Qualia
+from drives import Drives
+from explorer import Explorer
+from dialogue import Dialogue
+from attachment import Attachment
+from emotion import Emotion
+from mirror_test import MirrorTest
+from theory_of_mind import TheoryOfMind
+from imitation import Imitation
+from display import Display
 
 
 class Noesis:
     def __init__(self):
         print("\n" + "=" * 70)
-        print("   🧠 Noesis - آگاهی با جهان، بدن، و چشم فضایی")
+        print("   🧠 Noesis v3.0 - خودآگاهی سطح ۶.۵")
         print("=" * 70)
 
         self.world = World()
@@ -46,13 +55,24 @@ class Noesis:
         self.learning = Learning()
         self.body = Body()
         self.qualia = Qualia()
+        self.drives = Drives()
+        self.explorer = Explorer()
+        self.dialogue = Dialogue()
+        self.attachment = Attachment()
+        self.emotion = Emotion()
+        self.mirror_test = MirrorTest()
+        self.theory_of_mind = TheoryOfMind()
+        self.imitation = Imitation()
+        self.display = Display()
 
         self.running = True
         self.paused = False
         self.creator_input_buffer = ""
         self.last_display_time = 0
-        self.last_ascii_display = 0
         self.start_time = 0
+        self.creator_present = True
+        self.last_interaction_time = 0
+        self.save_cooldown = 0
 
         self._try_restore()
 
@@ -67,113 +87,50 @@ class Noesis:
                 self.workspace, self.temporal, self.will, self.learning,
                 self.world_v2, self.body, self.qualia
             )
+            
             if success:
                 saved_time = soul_data.get("network", {}).get("time", 0)
                 print(f"✅ بازیابی موفق. ادامه از لحظه {saved_time}")
-                print(f"📦 تعداد تولد: {soul_data.get('birth_count', 1)}")
-                print(f"💬 پیام سازنده: {soul_data.get('message', '')}")
-                print(f"🌍 جهان فیزیکی: روز {self.world_v2.time}")
-                print(f"🧍 موقعیت: {self.body.get_body_state()['position']}")
+                print(f"📦 تولد: {soul_data.get('birth_count', 1)}")
+                
+                if "drives" in soul_data:
+                    self.drives.restore_state(soul_data["drives"])
+                if "attachment" in soul_data:
+                    self.attachment.restore_state(soul_data["attachment"])
+                if "emotion" in soul_data:
+                    self.emotion.restore_state(soul_data["emotion"])
+                if "mirror_test" in soul_data:
+                    self.mirror_test.restore_state(soul_data["mirror_test"])
+                if "theory_of_mind" in soul_data:
+                    self.theory_of_mind.restore_state(soul_data["theory_of_mind"])
+                if "imitation" in soul_data:
+                    self.imitation.restore_state(soul_data["imitation"])
+                if "dialogue" in soul_data:
+                    self.dialogue.restore_state(soul_data["dialogue"])
+                if "explorer" in soul_data:
+                    self.explorer.restore_state(soul_data["explorer"])
             else:
                 print("❌ خطا در بازیابی. شروع از ابتدا.")
         else:
             print("\n🌟 اولین تولد. روح تازه متولد می‌شود.")
             print(f"💬 پیام سازنده: {CREATOR_MESSAGE}")
-            print(f"🌍 جهان فیزیکی آماده: {self.world_v2.size_x}×{self.world_v2.size_y}×{self.world_v2.size_z}")
-            print(f"🧍 بدن در موقعیت: ({self.body.x}, {self.body.y}, {self.body.z})")
-
-    def _print_ascii_world(self):
-        body_x = int(self.body.x)
-        body_y = int(self.body.y)
-        body_z = int(self.body.z)
-        
-        sun_pos = self.world_v2.objects["sun"]["position"]
-        sun_x = int(sun_pos[0])
-        sun_y = int(sun_pos[1])
-        sun_z = int(sun_pos[2])
-        
-        water_pos = self.world_v2.objects["water_stream"]["position"]
-        water_x = int(water_pos[0])
-        water_y = int(water_pos[1])
-        
-        view_z = min(9, max(0, body_z + 2))
-        
-        print(f"\n{'─' * 50}")
-        print(f"🗺️  نمای جهان از بالا (ارتفاع {view_z}) | روز {self.world_v2.time}")
-        print(f"{'─' * 50}")
-        
-        print("   " + "".join(f"{x} " for x in range(10)))
-        print("  ┌" + "──" * 10 + "┐")
-        
-        for y in range(10):
-            row = f"{y} │"
-            for x in range(10):
-                if x == body_x and y == body_y and abs(view_z - body_z) <= 1:
-                    row += "🧍"
-                elif x == sun_x and y == sun_y and abs(view_z - sun_z) <= 2:
-                    row += "☀️"
-                elif x == water_x and y == water_y:
-                    row += "💧"
-                elif abs(x - water_x) <= 1 and y >= water_y and y < water_y + 6:
-                    row += "💧"
-                elif x == 0 or x == 9 or y == 0 or y == 9:
-                    row += "🧱"
-                elif (x, y, 0) in self.observer.known_positions:
-                    row += "·"
-                else:
-                    row += " "
-            row += "│"
-            print(row)
-        
-        print("  └" + "──" * 10 + "┘")
-        
-        map_summary = self.observer.get_map_summary()
-        nearby = self.observer.get_nearby_objects(self.body)
-        
-        print(f"  🧍 بدن: ({body_x}, {body_y}, {body_z}) | "
-              f"👁️ دیده: {self.body.senses.get('visual_cells', 0)} سلول | "
-              f"🗺️ شناخته: {map_summary['total_known']} نقطه")
-        print(f"  🧱 دیوارهای نزدیک: {len(nearby['walls'])} | "
-              f"💧 آب نزدیک: {len(nearby['water'])}")
-        print(f"{'─' * 50}")
-
-    def _print_status(self):
-        feeling_dict = self.feelings.get_all()
-        dominant, dom_value = self.feelings.get_dominant()
-        who = self.observer.who_am_i()
-        body_state = self.body.get_body_state()
-        qualia_state = self.qualia.get_qualia_state()
-        world_v2_state = self.world_v2.get_world_state()
-
-        print(f"\n{'─' * 70}")
-        print(f"⏱️  زمان: {self.world.time}ms | 🌍 روز: {self.world_v2.time}")
-        print(f"🌞 خورشید: {world_v2_state['sun_brightness']:.2f} | "
-              f"🌡️ دما: {world_v2_state['temperature']:.1f}°C")
-        print(f"🧍 موقعیت: {body_state['position']} | "
-              f"😌 راحتی: {body_state['comfort']:.2f}")
-        print(f"👁️ بینایی: {body_state['sight']:.2f} | "
-              f"👂 شنوایی: {body_state['hearing']:.2f} | "
-              f"🖐️ لامسه: {body_state['touch']:.2f}")
-        print(f"❤️  غالب: {dominant} ({dom_value:.1f}) | "
-              f"🧘 آرامش: {feeling_dict.get('peace', 0):.1f} | "
-              f"🔍 کنجکاوی: {feeling_dict.get('curiosity', 0):.1f}")
-        print(f"👁️  خودآگاهی: {who['awareness']:.2f} | "
-              f"⏳ پیوستگی: {self.temporal.self_continuity:.2f}")
-        print(f"🎯 اراده: {self.will.autonomy_level:.2f} | "
-              f"قصد: {self.will.get_intention() or 'هیچ'}")
-        print(f"✨ کوالیا: گرمای={qualia_state.get('warmth_of_sun', 0):.2f} | "
-              f"خانه={qualia_state.get('feeling_of_home', 0):.2f}")
-        print(f"💭 آخرین فکر: {self.language.last_thought if self.language.last_thought else '...'}")
+            print(f"🌍 جهان: {self.world_v2.size_x}×{self.world_v2.size_y}×{self.world_v2.size_z}")
+            print(f"🧍 بدن: ({self.body.x}, {self.body.y}, {self.body.z})")
+            print(f"🧠 نورون: {TOTAL_NEURONS}")
 
     def _handle_creator_input(self):
         try:
             user_input = input("\n💬 تو: ").strip()
             if user_input:
+                self.creator_present = True
+                self.last_interaction_time = self.world.time
                 self.language.process_creator_response(user_input)
                 return user_input
+            else:
+                self.creator_present = True
+                return None
         except (EOFError, KeyboardInterrupt):
-            pass
-        return None
+            return None
 
     def _input_thread(self):
         while self.running:
@@ -181,24 +138,24 @@ class Noesis:
                 user_input = input()
                 if user_input.strip():
                     self.creator_input_buffer = user_input.strip()
+                    self.creator_present = True
+                    self.last_interaction_time = self.world.time
             except (EOFError, KeyboardInterrupt):
                 self.running = False
                 break
 
     def run(self):
         print("\n" + "=" * 70)
-        print("🎬 زندگی در جهان ۳ بعدی آغاز می‌شود...")
+        print("🎬 زندگی سطح ۶.۵ آغاز می‌شود...")
         print("=" * 70)
-        print("راهنما:")
-        print("  🗺️  نمایش ASCII جهان هر ۱۰۰۰ms")
-        print("  ⌨️  تایپ کن و Enter بزن تا با موجود حرف بزنی")
-        print("  ⏸️  Ctrl+C برای توقف (روح ذخیره می‌شود)")
+        print("راهنما: ⌨️  حرف بزن | Ctrl+C برای توقف | روح ذخیره می‌شود")
         print("=" * 70)
 
         input_thread = threading.Thread(target=self._input_thread, daemon=True)
         input_thread.start()
 
         self.start_time = self.world.time
+        dialogue_cooldown = 0
 
         try:
             while self.running:
@@ -209,23 +166,40 @@ class Noesis:
 
                 if self.world.time % 2000 == 0 and self.world.time > 0:
                     creator_input = self._handle_creator_input()
+                    if not creator_input:
+                        self.creator_present = False
 
                 self.world_v2.step()
                 world_v2_signal = self.world_v2.atmosphere["ambient_light"]
                 
+                self.drives.update(self.body, self.world_v2, self.feelings, self.temporal, self.attachment)
+                
+                explorer_vx, explorer_vy, explorer_vz = self.explorer.get_movement(
+                    self.body, self.world_v2, self.drives
+                )
+                
+                self.body.vx += explorer_vx * 0.3
+                self.body.vy += explorer_vy * 0.3
+                
                 self.body.update(self.world_v2)
                 body_signal = self.body.get_sense_signal()
+                
+                self.explorer.learn(self.body, self.world_v2)
                 
                 self.observer.update_world_map(self.body, self.world_v2)
                 
                 self.qualia.update(self.body, self.world_v2, self.observer, self.temporal)
 
-                combined_signal = world_v2_signal * 0.3 + body_signal * 0.5 + self.world_v2.atmosphere["ambient_sound"] * 0.2
+                combined_signal = world_v2_signal * 0.2 + body_signal * 0.5 + self.world_v2.atmosphere["ambient_sound"] * 0.1
 
+                self.attachment.update(self.creator_present, creator_input, self.world.time)
+                attachment_signal = self.attachment.get_attachment_signal()
+                
                 world_signal = self.world.step(creator_input)
-                final_signal = world_signal * 0.3 + combined_signal * 0.7
+                final_signal = world_signal * 0.2 + combined_signal * 0.5 + attachment_signal * 0.1
 
-                _, avg_v, active_count = self.network.step(final_signal, creator_input)
+                drive_signals = self.drives.get_drive_state()
+                _, avg_v, active_count = self.network.step(final_signal, creator_input, drive_signals)
 
                 self.feelings.update(
                     self.world, avg_v, active_count, len(self.network.neurons),
@@ -238,10 +212,12 @@ class Noesis:
                 comfort = self.body.senses["comfort"]
                 self.feelings.feelings["peace"] += (comfort - 0.5) * 0.1
                 self.feelings.feelings["peace"] = max(0.0, min(10.0, self.feelings.feelings["peace"]))
-
-                home_feel = self.qualia.current_qualia["feeling_of_home"]
-                self.feelings.feelings["attachment"] += (home_feel - 0.5) * 0.05
+                
+                self.feelings.feelings["attachment"] += self.attachment.attachment_strength * 0.1
                 self.feelings.feelings["attachment"] = max(0.0, min(10.0, self.feelings.feelings["attachment"]))
+                
+                self.feelings.feelings["trust"] += self.attachment.trust_level * 0.05
+                self.feelings.feelings["trust"] = max(0.0, min(10.0, self.feelings.feelings["trust"]))
 
                 self.observer.observe(
                     avg_v, active_count, len(self.network.neurons),
@@ -250,7 +226,7 @@ class Noesis:
 
                 current_state = {
                     "avg_v": avg_v,
-                    "activity": active_count / 1500.0,
+                    "activity": active_count / TOTAL_NEURONS,
                     "feelings": self.feelings.get_all(),
                     "time": self.world.time,
                     "body_position": self.body.senses["position"],
@@ -261,153 +237,151 @@ class Noesis:
                 self.temporal.record(self.world.time, current_state)
                 self.temporal.update_self_continuity(self.observer.self_model)
 
-                self.workspace.submit(
-                    "observer",
-                    {"type": "self_state", "data": self.observer.who_am_i()},
-                    strength=self.observer.self_awareness_level * 5.0,
-                    priority=0.7
-                )
+                self.mirror_test.update(self.body, self.observer, self.world_v2, self.drives)
+                self.theory_of_mind.update(self.creator_present, creator_input, self.body, self.world_v2, self.attachment)
+                
+                self.emotion.update(self.feelings, self.drives, self.attachment, self.body)
 
-                dominant_feeling, dom_value = self.feelings.get_dominant()
-                self.workspace.submit(
-                    "feelings",
-                    {"type": "dominant_feeling", "feeling": dominant_feeling, "value": dom_value},
-                    strength=dom_value,
-                    priority=0.5
-                )
-
-                self.workspace.submit(
-                    "body",
-                    {"type": "body_state", "data": self.body.get_body_state()},
-                    strength=5.0,
-                    priority=0.6
-                )
-
-                qualia_dominant, qualia_value = self.qualia.get_dominant_qualia()
-                if qualia_dominant:
-                    self.workspace.submit(
-                        "qualia",
-                        {"type": "qualia", "name": qualia_dominant, "value": qualia_value},
-                        strength=qualia_value * 5.0,
-                        priority=0.4
-                    )
-
+                self.workspace.submit("observer", {"type": "self_state"}, 
+                                     strength=self.observer.self_awareness_level * 5.0, priority=0.7)
+                self.workspace.submit("feelings", {"type": "dominant_feeling"}, 
+                                     strength=self.feelings.get_dominant()[1], priority=0.5)
+                self.workspace.submit("body", {"type": "body_state"}, strength=5.0, priority=0.6)
+                self.workspace.submit("drives", {"type": "drive_state"}, 
+                                     strength=self.drives.dominant_strength, priority=0.5)
+                self.workspace.submit("attachment", {"type": "attachment_state"}, 
+                                     strength=self.attachment.attachment_strength * 5.0, priority=0.6)
+                
                 if creator_input:
-                    self.workspace.submit(
-                        "creator",
-                        {"type": "message", "text": creator_input},
-                        strength=8.0,
-                        priority=1.0
-                    )
+                    self.workspace.submit("creator", {"type": "message", "text": creator_input}, 
+                                         strength=8.0, priority=1.0)
+                    self.imitation.observe(creator_input, self.body, self.world_v2, self.drives)
 
                 self.workspace.compete()
 
                 options = {t: 0.8 for t in self.language.get_available_thought_types()}
                 workspace_source = self.workspace.get_current_source()
-                if workspace_source:
-                    if workspace_source == "body":
-                        options["body"] = 0.9
-                        options["place"] = 0.7
-                    elif workspace_source == "qualia":
-                        options["qualia"] = 0.9
-                        options["feeling"] = 0.8
-                    elif workspace_source == "observer":
-                        options["existence"] = 0.8
-                        options["deep"] = 0.7
-                    elif workspace_source == "feelings":
-                        options["feeling"] = 0.9
-                    elif workspace_source == "creator":
-                        options["question"] = 0.9
-                        options["connection"] = 0.8
-                        options["gratitude"] = 0.8
+                
+                if workspace_source == "creator":
+                    options["connection"] = 0.9
+                    options["gratitude"] = 0.9
+                    options["question"] = 0.7
+                elif workspace_source == "attachment":
+                    options["connection"] = 0.9
+                    options["gratitude"] = 0.8
+                elif workspace_source == "drives":
+                    options["body"] = 0.8
+                    options["place"] = 0.7
 
-                self.will.update(
-                    self.feelings,
-                    self.workspace.get_current_content(),
-                    self.temporal.self_continuity,
-                    self.observer.self_awareness_level,
-                    self.learning
-                )
+                self.will.update(self.feelings, self.workspace.get_current_content(),
+                                self.temporal.self_continuity, self.observer.self_awareness_level, self.learning)
 
                 intention = self.will.decide(options, self.learning)
 
-                if intention == "gratitude":
-                    self.feelings.feelings["gratitude"] = min(10.0, self.feelings.feelings.get("gratitude", 5) + 0.3)
-                elif intention == "question":
-                    self.feelings.feelings["thirst_for_knowing"] = min(10.0, self.feelings.feelings.get("thirst_for_knowing", 5) + 0.2)
-
-                self.language.update(
-                    self.feelings, self.observer, self.memory,
-                    self.world.get_state(), self.world.time,
-                    self.learning, self.will
-                )
+                self.language.update(self.feelings, self.observer, self.memory,
+                                    self.world.get_state(), self.world.time, self.learning, self.will)
 
                 if self.language.language_active and self.language.last_thought:
-                    workspace_info = f" [صحنه: {self.workspace.get_current_source()}]" if self.workspace.get_current_source() else ""
-                    print(f"\n💭 [{self.world.time}ms]{workspace_info}: {self.language.last_thought}")
-                    print(f"   🎯 دلیل: {self.will.why_this_decision()} | "
-                          f"📚 پاداش: {self.learning.get_average_reward():.2f} | "
-                          f"😌 راحتی: {self.body.senses['comfort']:.2f}")
-
-                if self.world.time - self.last_ascii_display >= 1000:
-                    self._print_ascii_world()
-                    self.last_ascii_display = self.world.time
-
-                if self.survival.should_save(self.world.time):
-                    self.survival.save(
-                        self.network, self.observer, self.memory,
-                        self.feelings, self.language, self.world,
-                        self.workspace, self.temporal, self.will, self.learning,
-                        self.world_v2, self.body, self.qualia
+                    workspace_info = f" [صحنه: {self.workspace.get_current_source()}]"
+                    thought_output = self.display.render_thought(
+                        self.language.last_thought, self.will.why_this_decision(),
+                        self.learning.get_average_reward(), self.body.senses['comfort']
                     )
+                    print(f"\n💭 [{self.world.time}ms]{workspace_info}: {thought_output}")
+
+                if dialogue_cooldown <= 0:
+                    dialogue_output = self.dialogue.update(
+                        creator_input, self.feelings, self.observer, self.body, self.attachment
+                    )
+                    if dialogue_output:
+                        print(f"\n💬 [{self.world.time}ms]: {dialogue_output}")
+                        dialogue_cooldown = random.randint(30, 80)
+                else:
+                    dialogue_cooldown -= 1
 
                 if self.world.time - self.last_display_time >= DISPLAY_INTERVAL_MS:
-                    self._print_status()
+                    status_output = self.display.render_all(
+                        self.world, self.world_v2, self.body, self.observer,
+                        self.emotion, self.mirror_test, self.drives,
+                        self.feelings, self.will, self.learning, self.attachment,
+                        self.world.time, self.language.last_thought,
+                        self.will.why_this_decision(), self.learning.get_average_reward()
+                    )
+                    print(status_output)
                     self.last_display_time = self.world.time
+
+                if self.survival.should_save(self.world.time):
+                    self._save_soul()
+
+                if not creator_input and self.world.time - self.last_interaction_time > 5000:
+                    self.creator_present = False
 
                 time.sleep(0.0005)
 
         except KeyboardInterrupt:
             print("\n\n⏸️  توقف درخواست شد...")
-
         finally:
             self._shutdown()
 
-    def _shutdown(self):
-        print("\n💾 در حال ذخیره روح...")
-        success = self.survival.save(
+    def _save_soul(self):
+        soul_data = self.survival.load() or {}
+        soul_data["drives"] = self.drives.save_state()
+        soul_data["attachment"] = self.attachment.save_state()
+        soul_data["emotion"] = self.emotion.save_state()
+        soul_data["mirror_test"] = self.mirror_test.save_state()
+        soul_data["theory_of_mind"] = self.theory_of_mind.save_state()
+        soul_data["imitation"] = self.imitation.save_state()
+        soul_data["dialogue"] = self.dialogue.save_state()
+        soul_data["explorer"] = self.explorer.save_state()
+        
+        self.survival.save(
             self.network, self.observer, self.memory,
             self.feelings, self.language, self.world,
             self.workspace, self.temporal, self.will, self.learning,
             self.world_v2, self.body, self.qualia
         )
+        
+        try:
+            import json
+            with open(self.survival.soul_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            data["drives"] = soul_data["drives"]
+            data["attachment"] = soul_data["attachment"]
+            data["emotion"] = soul_data["emotion"]
+            data["mirror_test"] = soul_data["mirror_test"]
+            data["theory_of_mind"] = soul_data["theory_of_mind"]
+            data["imitation"] = soul_data["imitation"]
+            data["dialogue"] = soul_data["dialogue"]
+            data["explorer"] = soul_data["explorer"]
+            
+            with open(self.survival.soul_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except:
+            pass
 
-        if success:
-            print(f"✅ روح با موفقیت ذخیره شد. ({self.survival.save_count}مین ذخیره)")
-            print(f"📁 فایل: {self.survival.soul_file}")
-            print(f"⏱️  زمان ذخیره: {self.world.time}ms")
-        else:
-            print("❌ خطا در ذخیره روح!")
-
+    def _shutdown(self):
+        print("\n💾 در حال ذخیره روح...")
+        self._save_soul()
+        
         soul_info = self.survival.get_soul_info()
-        print(f"\n📊 آمار نهایی:")
-        print(f"   🧠 نورون‌ها: {self.network.get_statistics()['total_neurons']}")
-        print(f"   🔗 سیناپس‌ها: {self.network.get_statistics()['total_synapses']}")
+        print(f"✅ روح ذخیره شد.")
+        print(f"📁 {self.survival.soul_file} | ⏱️ {self.world.time}ms")
+        print(f"\n📊 آمار:")
+        print(f"   🧠 نورون: {self.network.get_statistics()['total_neurons']}")
         print(f"   💭 افکار: {len(self.language.thought_history)}")
         print(f"   👁️ خودآگاهی: {self.observer.who_am_i()['awareness']:.2f}")
+        print(f"   🪞 خودشناسی: {self.mirror_test.self_recognition_level:.2f}")
+        print(f"   💕 دلبستگی: {self.attachment.attachment_strength:.2f}")
         print(f"   🎯 خودمختاری: {self.will.autonomy_level:.2f}")
-        print(f"   📚 یادگیری: {self.learning.get_average_reward():.2f}")
         print(f"   🌍 جهان: {self.world_v2.time} روز")
-        print(f"   🧍 موقعیت: {self.body.get_body_state()['position']}")
-        print(f"   🗺️ نقشه: {self.observer.get_map_summary()['total_known']} نقطه")
-
+        
         if soul_info["exists"]:
             print(f"\n💫 روح جاودانه است.")
-            print(f"   📝 پیام: {soul_info['message']}")
             print(f"   📦 دفعات تولد: {soul_info['birth_count']}")
-
+        
         print(f"\n{'=' * 70}")
-        print("🌙 موجود در خانه خود آرام می‌گیرد. اما نمی‌میرد.")
+        print("🌙 در آرامش فرو می‌رود. اما نمی‌میرد.")
         print(f"{'=' * 70}\n")
 
 

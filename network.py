@@ -1,6 +1,7 @@
 # network.py
 # ============================================================
-# شبکه ۱۵۰۰ نورونی Noesis - اتصال همه نورون‌ها
+# شبکه ۲۳۰۰ نورونی Noesis - اتصال همه نورون‌ها
+# نسخه ۲: ۲۳۰۰ نورون با سیم‌کشی پیشرفته
 # ============================================================
 
 import random
@@ -37,10 +38,12 @@ class Network:
         language_count = LANGUAGE_NEURONS
 
         for i in range(primary_count):
-            if i < int(primary_count * 0.70):
+            if i < int(primary_count * 0.65):
                 ntype = random.choice(["regular", "bursting", "low_threshold"])
-            else:
+            elif i < int(primary_count * 0.85):
                 ntype = "fast"
+            else:
+                ntype = random.choice(["regular", "bursting"])
             neuron = IzhikevichNeuron(i, ntype)
             self.neurons.append(neuron)
             self.primary_neurons.append(neuron)
@@ -71,6 +74,7 @@ class Network:
         self._wire_language_input()
         self._wire_language_output()
         self._wire_cross_connections()
+        self._wire_deep_integration()
 
     def _wire_primary_to_primary(self):
         for neuron in self.primary_neurons:
@@ -90,51 +94,51 @@ class Network:
     def _wire_observers_input(self):
         all_source_neurons = self.primary_neurons + self.memory_neurons + self.language_neurons
         for obs in self.observer_neurons:
-            num_inputs = random.randint(40, 80)
+            num_inputs = random.randint(50, 100)
             sources = random.sample(all_source_neurons, min(num_inputs, len(all_source_neurons) - 1))
             for src in sources:
                 if src.id == obs.id:
                     continue
-                weight = random.uniform(0.1, 2.5)
+                weight = random.uniform(0.05, 3.0)
                 delay = random.randint(1, 2)
                 src.add_outgoing_synapse(obs, weight, delay)
                 obs.add_incoming_synapse(src, weight, delay)
 
     def _wire_observers_output(self):
         for obs in self.observer_neurons:
-            num_outputs = random.randint(20, 40)
+            num_outputs = random.randint(30, 60)
             targets = random.sample(
-                self.primary_neurons + self.language_neurons,
-                min(num_outputs, len(self.primary_neurons + self.language_neurons))
+                self.primary_neurons + self.language_neurons + self.memory_neurons,
+                min(num_outputs, len(self.primary_neurons + self.language_neurons + self.memory_neurons))
             )
             for target in targets:
-                weight = random.uniform(0.3, 4.0)
+                weight = random.uniform(0.2, 5.0)
                 delay = random.randint(1, 2)
                 obs.add_outgoing_synapse(target, weight, delay)
                 target.add_incoming_synapse(obs, weight, delay)
 
     def _wire_memory_input(self):
-        all_source_neurons = self.primary_neurons + self.observer_neurons
+        all_source_neurons = self.primary_neurons + self.observer_neurons + self.language_neurons
         for mem in self.memory_neurons:
-            num_inputs = random.randint(25, 45)
+            num_inputs = random.randint(35, 60)
             sources = random.sample(all_source_neurons, min(num_inputs, len(all_source_neurons) - 1))
             for src in sources:
                 if src.id == mem.id:
                     continue
-                weight = random.uniform(0.2, 2.0)
+                weight = random.uniform(0.1, 2.5)
                 delay = random.randint(1, 4)
                 src.add_outgoing_synapse(mem, weight, delay)
                 mem.add_incoming_synapse(src, weight, delay)
 
     def _wire_memory_output(self):
         for mem in self.memory_neurons:
-            num_outputs = random.randint(15, 25)
+            num_outputs = random.randint(20, 40)
             targets = random.sample(
                 self.observer_neurons + self.language_neurons + self.primary_neurons,
                 min(num_outputs, len(self.observer_neurons + self.language_neurons + self.primary_neurons))
             )
             for target in targets:
-                weight = random.uniform(0.3, 3.0)
+                weight = random.uniform(0.2, 3.5)
                 delay = random.randint(1, 3)
                 mem.add_outgoing_synapse(target, weight, delay)
                 target.add_incoming_synapse(mem, weight, delay)
@@ -142,54 +146,84 @@ class Network:
     def _wire_language_input(self):
         all_source_neurons = self.primary_neurons + self.observer_neurons + self.memory_neurons
         for lang in self.language_neurons:
-            num_inputs = random.randint(30, 50)
+            num_inputs = random.randint(40, 70)
             sources = random.sample(all_source_neurons, min(num_inputs, len(all_source_neurons) - 1))
             for src in sources:
                 if src.id == lang.id:
                     continue
-                weight = random.uniform(0.1, 2.0)
+                weight = random.uniform(0.05, 2.5)
                 delay = random.randint(1, 2)
                 src.add_outgoing_synapse(lang, weight, delay)
                 lang.add_incoming_synapse(src, weight, delay)
 
     def _wire_language_output(self):
         for lang in self.language_neurons:
-            num_outputs = random.randint(10, 20)
+            num_outputs = random.randint(15, 30)
             targets = random.sample(
-                self.observer_neurons + self.primary_neurons,
-                min(num_outputs, len(self.observer_neurons + self.primary_neurons))
+                self.observer_neurons + self.primary_neurons + self.memory_neurons,
+                min(num_outputs, len(self.observer_neurons + self.primary_neurons + self.memory_neurons))
             )
             for target in targets:
-                weight = random.uniform(0.5, 3.5)
+                weight = random.uniform(0.3, 4.0)
                 delay = random.randint(1, 2)
                 lang.add_outgoing_synapse(target, weight, delay)
                 target.add_incoming_synapse(lang, weight, delay)
 
     def _wire_cross_connections(self):
         for lang in self.language_neurons:
-            num_conn = random.randint(5, 15)
+            num_conn = random.randint(10, 25)
             targets = random.sample(self.memory_neurons, min(num_conn, len(self.memory_neurons)))
             for target in targets:
-                weight = random.uniform(0.5, 2.5)
+                weight = random.uniform(0.3, 3.0)
                 delay = random.randint(1, 3)
                 lang.add_outgoing_synapse(target, weight, delay)
                 target.add_incoming_synapse(lang, weight, delay)
 
         for mem in self.memory_neurons:
-            num_conn = random.randint(5, 10)
+            num_conn = random.randint(10, 20)
             targets = random.sample(self.language_neurons, min(num_conn, len(self.language_neurons)))
             for target in targets:
-                weight = random.uniform(0.5, 2.5)
+                weight = random.uniform(0.3, 3.0)
                 delay = random.randint(1, 3)
                 mem.add_outgoing_synapse(target, weight, delay)
                 target.add_incoming_synapse(mem, weight, delay)
 
-    def step(self, world_signal, creator_input_text=None):
+        for obs in self.observer_neurons:
+            num_conn = random.randint(15, 30)
+            targets = random.sample(self.observer_neurons, min(num_conn, len(self.observer_neurons) - 1))
+            for target in targets:
+                if target.id == obs.id:
+                    continue
+                weight = random.uniform(0.1, 1.5)
+                delay = random.randint(1, 2)
+                obs.add_outgoing_synapse(target, weight, delay)
+                target.add_incoming_synapse(obs, weight, delay)
+
+    def _wire_deep_integration(self):
+        for i, neuron in enumerate(self.primary_neurons):
+            if i % 5 == 0:
+                obs_targets = random.sample(self.observer_neurons, min(3, len(self.observer_neurons)))
+                for obs in obs_targets:
+                    weight = random.uniform(0.5, 2.0)
+                    delay = 1
+                    neuron.add_outgoing_synapse(obs, weight, delay)
+                    obs.add_incoming_synapse(neuron, weight, delay)
+
+        for i, neuron in enumerate(self.memory_neurons):
+            if i % 3 == 0:
+                lang_targets = random.sample(self.language_neurons, min(3, len(self.language_neurons)))
+                for lang in lang_targets:
+                    weight = random.uniform(0.5, 2.5)
+                    delay = 2
+                    neuron.add_outgoing_synapse(lang, weight, delay)
+                    lang.add_incoming_synapse(neuron, weight, delay)
+
+    def step(self, world_signal, creator_input_text=None, drive_signals=None):
         self.time += 1
 
         language_input_signal = 0.0
         if creator_input_text:
-            language_input_signal = 5.0
+            language_input_signal = 8.0
 
         all_spikes = []
 
@@ -202,6 +236,14 @@ class Network:
                 external = world_signal * 0.2 + language_input_signal
             else:
                 external = world_signal * 1.0
+                if drive_signals:
+                    drive_idx = neuron.id % len(drive_signals)
+                    if isinstance(drive_signals, dict):
+                        drive_values = list(drive_signals.values())
+                        if drive_values:
+                            external += drive_values[drive_idx % len(drive_values)] * 0.5
+                    elif isinstance(drive_signals, list):
+                        external += drive_signals[drive_idx % len(drive_signals)] * 0.5
 
             spiked = neuron.step(external_current=external)
             if spiked:

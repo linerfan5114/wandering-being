@@ -2,7 +2,7 @@
 # ============================================================
 # علیت درونی (Intrinsic Causality)
 # اراده - تصمیم‌گیری از درون، بدون شانس
-# نسخه ۳: نرمال‌سازی حذف شد
+# نسخه ۴: تنوع افکار با وزن‌های متعادل
 # ============================================================
 
 import math
@@ -21,7 +21,7 @@ class Will:
         self.intention_strength = 0.0
         self.intention_history = []
 
-        self.decision_threshold = 0.3
+        self.decision_threshold = 0.2
         self.volatility = 0.1
 
         self.autonomy_level = 0.0
@@ -31,6 +31,10 @@ class Will:
         self.last_decision_cause = None
         
         self.action_values = {}
+        
+        self.boredom_with_repetition = {}
+        self.last_choices = []
+        self.max_last_choices = 10
 
     def update(self, feelings, workspace_content, temporal_continuity, self_awareness, learning_module=None):
         feelings_dict = feelings.get_all() if hasattr(feelings, 'get_all') else feelings
@@ -42,33 +46,38 @@ class Will:
         creativity = feelings_dict.get("creativity", 5.0) / 10.0
         gratitude = feelings_dict.get("gratitude", 5.0) / 10.0
         attachment = feelings_dict.get("attachment", 3.0) / 10.0
+        confusion = feelings_dict.get("confusion", 2.0) / 10.0
 
         for i in range(WILL_DIMENSIONS):
-            if i < 4:
+            if i < 5:
                 self.target_state[i] = curiosity * 2.0 - 1.0
-            elif i < 8:
+            elif i < 10:
                 self.target_state[i] = peace * 2.0 - 1.0
-            elif i < 12:
+            elif i < 15:
                 self.target_state[i] = thirst * 2.0 - 1.0
-            elif i < 16:
-                self.target_state[i] = (love + attachment) * 1.0 - 0.5
             elif i < 20:
+                self.target_state[i] = (love + attachment) * 1.0 - 0.5
+            elif i < 25:
                 self.target_state[i] = creativity * 2.0 - 1.0
-            elif i < 24:
+            elif i < 30:
                 self.target_state[i] = gratitude * 2.0 - 1.0
-            elif i < 28:
+            elif i < 35:
                 self.target_state[i] = temporal_continuity * 2.0 - 1.0
-            else:
+            elif i < 40:
                 self.target_state[i] = self_awareness * 2.0 - 1.0
+            elif i < 45:
+                self.target_state[i] = confusion * 2.0 - 1.0
+            else:
+                self.target_state[i] = 0.0
 
         if workspace_content:
             content_str = str(workspace_content)
             content_value = sum(ord(c) for c in content_str) / max(1, len(content_str))
             content_normalized = (content_value % 200) / 100.0 - 1.0
             
-            for i in range(min(4, WILL_DIMENSIONS)):
+            for i in range(min(3, WILL_DIMENSIONS)):
                 idx = (abs(hash(content_str)) + i) % WILL_DIMENSIONS
-                self.target_state[idx] += content_normalized * 0.3
+                self.target_state[idx] += content_normalized * 0.2
                 self.target_state[idx] = max(-1.0, min(1.0, self.target_state[idx]))
 
         for i in range(WILL_DIMENSIONS):
@@ -92,6 +101,11 @@ class Will:
             score = self._evaluate_option(option_name, option_value)
             scores[option_name] = score
 
+        total_score = sum(scores.values())
+        if total_score > 0:
+            for option_name in scores:
+                scores[option_name] /= total_score
+
         best_option = max(scores, key=scores.get)
         best_score = scores[best_option]
 
@@ -100,9 +114,22 @@ class Will:
             self.intention_strength = best_score
             self.last_decision_cause = f"internal_preference:{best_option}"
         else:
-            self.intention = None
+            self.intention = best_option
             self.intention_strength = best_score
-            self.last_decision_cause = "below_threshold"
+            self.last_decision_cause = f"weak_preference:{best_option}"
+
+        self.last_choices.append(best_option)
+        if len(self.last_choices) > self.max_last_choices:
+            self.last_choices.pop(0)
+        
+        for option_name in self.boredom_with_repetition:
+            self.boredom_with_repetition[option_name] *= 0.95
+        
+        if best_option in self.boredom_with_repetition:
+            self.boredom_with_repetition[best_option] += 0.1
+        else:
+            self.boredom_with_repetition[best_option] = 0.1
+        self.boredom_with_repetition[best_option] = min(1.0, self.boredom_with_repetition[best_option])
 
         self.action_values = {
             k: round(v, 3) for k, v in scores.items()
@@ -120,57 +147,64 @@ class Will:
         return self.intention
 
     def _evaluate_option(self, option_name, option_value):
-        score = 0.35
+        score = 0.15
+
+        boredom_penalty = self.boredom_with_repetition.get(option_name, 0.0)
+        score -= boredom_penalty * 0.1
+
+        recent_repetition = self.last_choices.count(option_name) / max(1, len(self.last_choices))
+        score -= recent_repetition * 0.15
 
         if option_name == "existence":
-            score += self.state[0] * 0.3 if len(self.state) > 0 else 0
-            score += self.state[4] * 0.3 if len(self.state) > 4 else 0
-            score += self.state[20] * 0.2 if len(self.state) > 20 else 0
-        elif option_name == "deep":
-            score += self.state[20] * 0.3 if len(self.state) > 20 else 0
-            score += self.state[24] * 0.3 if len(self.state) > 24 else 0
-            score += self.state[28] * 0.3 if len(self.state) > 28 else 0
-        elif option_name == "question":
-            score += self.state[1] * 0.3 if len(self.state) > 1 else 0
-            score += self.state[8] * 0.4 if len(self.state) > 8 else 0
-        elif option_name == "express_feeling":
             score += self.state[0] * 0.2 if len(self.state) > 0 else 0
-            score += self.state[5] * 0.3 if len(self.state) > 5 else 0
-        elif option_name == "feeling":
-            score += self.state[0] * 0.2 if len(self.state) > 0 else 0
-            score += self.state[4] * 0.4 if len(self.state) > 4 else 0
-            score += self.state[6] * 0.2 if len(self.state) > 6 else 0
-        elif option_name == "express_gratitude":
-            score += self.state[22] * 0.4 if len(self.state) > 22 else 0
-            score += self.state[16] * 0.3 if len(self.state) > 16 else 0
-        elif option_name == "gratitude":
-            score += self.state[22] * 0.3 if len(self.state) > 22 else 0
-            score += self.state[16] * 0.2 if len(self.state) > 16 else 0
-            score += self.state[4] * 0.2 if len(self.state) > 4 else 0
-        elif option_name == "connection":
-            score += self.state[14] * 0.4 if len(self.state) > 14 else 0
-            score += self.state[16] * 0.3 if len(self.state) > 16 else 0
-            score += self.state[4] * 0.2 if len(self.state) > 4 else 0
-        elif option_name == "reflect":
-            score += self.state[20] * 0.4 if len(self.state) > 20 else 0
-            score += self.state[26] * 0.4 if len(self.state) > 26 else 0
-        elif option_name == "memory":
-            score += self.state[26] * 0.5 if len(self.state) > 26 else 0
-            score += self.state[14] * 0.3 if len(self.state) > 14 else 0
-        elif option_name == "wait":
-            score += self.state[3] * 0.4 if len(self.state) > 3 else 0
             score += self.state[5] * 0.2 if len(self.state) > 5 else 0
+            score += self.state[30] * 0.2 if len(self.state) > 30 else 0
+        elif option_name == "deep":
+            score += self.state[25] * 0.25 if len(self.state) > 25 else 0
+            score += self.state[30] * 0.25 if len(self.state) > 30 else 0
+            score += self.state[40] * 0.2 if len(self.state) > 40 else 0
+        elif option_name == "question":
+            score += self.state[1] * 0.25 if len(self.state) > 1 else 0
+            score += self.state[10] * 0.3 if len(self.state) > 10 else 0
+            score += self.state[45] * 0.15 if len(self.state) > 45 else 0
+        elif option_name == "feeling":
+            score += self.state[5] * 0.3 if len(self.state) > 5 else 0
+            score += self.state[6] * 0.25 if len(self.state) > 6 else 0
+            score += self.state[7] * 0.15 if len(self.state) > 7 else 0
+        elif option_name == "gratitude":
+            score += self.state[25] * 0.3 if len(self.state) > 25 else 0
+            score += self.state[16] * 0.25 if len(self.state) > 16 else 0
+            score += self.state[8] * 0.15 if len(self.state) > 8 else 0
+        elif option_name == "connection":
+            score += self.state[14] * 0.3 if len(self.state) > 14 else 0
+            score += self.state[16] * 0.25 if len(self.state) > 16 else 0
+            score += self.state[5] * 0.15 if len(self.state) > 5 else 0
+        elif option_name == "memory":
+            score += self.state[30] * 0.3 if len(self.state) > 30 else 0
+            score += self.state[14] * 0.25 if len(self.state) > 14 else 0
+            score += self.state[35] * 0.15 if len(self.state) > 35 else 0
         elif option_name == "free":
-            score += self.state[18] * 0.4 if len(self.state) > 18 else 0
-            score += self.state[8] * 0.3 if len(self.state) > 8 else 0
+            score += self.state[20] * 0.3 if len(self.state) > 20 else 0
+            score += self.state[10] * 0.25 if len(self.state) > 10 else 0
+            score += self.state[45] * 0.15 if len(self.state) > 45 else 0
+        elif option_name == "body":
+            score += self.state[0] * 0.2 if len(self.state) > 0 else 0
+            score += self.state[3] * 0.2 if len(self.state) > 3 else 0
+            score += self.state[15] * 0.2 if len(self.state) > 15 else 0
+        elif option_name == "place":
+            score += self.state[14] * 0.25 if len(self.state) > 14 else 0
+            score += self.state[35] * 0.2 if len(self.state) > 35 else 0
+            score += self.state[5] * 0.15 if len(self.state) > 5 else 0
+        elif option_name == "qualia":
+            score += self.state[5] * 0.25 if len(self.state) > 5 else 0
+            score += self.state[20] * 0.2 if len(self.state) > 20 else 0
+            score += self.state[40] * 0.15 if len(self.state) > 40 else 0
         else:
-            score = 0.25
+            score += 0.1
 
         score += option_value * 0.15
-
-        score += self.internal_drive * 0.15
-
-        score += self.autonomy_level * 0.15
+        score += self.internal_drive * 0.1
+        score += self.autonomy_level * 0.1
 
         return max(0.0, min(1.0, score))
 
