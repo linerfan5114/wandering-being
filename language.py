@@ -1,10 +1,9 @@
 # language.py
 # ============================================================
 # نورون‌های زبان Noesis - فکر کردن با کلمات، جمله‌سازی پویا
-# نسخه ۳: متصل به Global Workspace
+# نسخه ۴: بدون random، مبتنی بر یادگیری تقویتی
 # ============================================================
 
-import random
 import math
 from config import VOCABULARY, LANGUAGE_THRESHOLD, MAX_WORDS_PER_THOUGHT
 
@@ -17,7 +16,7 @@ class Language:
 
         self.word_weights = {}
         for word in self.all_words:
-            self.word_weights[word] = random.uniform(0.3, 0.7)
+            self.word_weights[word] = 0.5
 
         self.learned_words = set()
         self.active_words = []
@@ -35,8 +34,13 @@ class Language:
         self.thought_cooldown = 30
         
         self.thought_type_options = ["existence", "feeling", "question", "connection", "gratitude", "memory", "deep", "free"]
+        
+        self.thought_scores = {t: 0.5 for t in self.thought_type_options}
+        
+        self.last_feelings_before_thought = None
+        self.last_thought_type = None
 
-    def update(self, feelings, observer, memory, world_state, current_time):
+    def update(self, feelings, observer, memory, world_state, current_time, learning_module=None, will_module=None):
         self._update_word_weights(feelings, observer)
         self._update_thinking_probability(feelings, observer)
         self._learn_new_words()
@@ -47,15 +51,52 @@ class Language:
         if current_time - self.last_thought_time < self.thought_cooldown:
             return
 
-        if random.random() < self.thinking_probability:
-            thought = self._generate_thought(feelings, observer, memory, world_state)
+        think_now = False
+        
+        if will_module and will_module.has_intention():
+            intention = will_module.get_intention()
+            if intention in self.thought_type_options:
+                think_now = True
+            elif intention in ["express_feeling", "express_gratitude"]:
+                think_now = True
+        elif self.thinking_probability > 0.3:
+            think_now = True
+
+        if think_now:
+            thought = self._generate_thought(feelings, observer, memory, world_state, learning_module, will_module)
             if thought:
+                if self.last_feelings_before_thought and self.last_thought_type and learning_module:
+                    feelings_dict = feelings.get_all()
+                    reward = learning_module.calculate_reward(
+                        self.last_feelings_before_thought,
+                        feelings_dict,
+                        self.last_thought_type
+                    )
+                    
+                    state = self._build_state_for_learning(feelings, observer, world_state)
+                    learning_module.observe_result(state, self.last_thought_type, reward)
+                
                 self.last_thought = thought
                 self.thought_history.append(thought)
                 if len(self.thought_history) > self.max_thought_history:
                     self.thought_history.pop(0)
                 self.language_active = True
                 self.last_thought_time = current_time
+                
+                self.last_feelings_before_thought = feelings.get_all().copy()
+
+    def _build_state_for_learning(self, feelings, observer, world_state):
+        feelings_dict = feelings.get_all()
+        dominant, dom_value = feelings.get_dominant()
+        
+        return {
+            "dominant_feeling": dominant,
+            "self_awareness": observer.self_awareness_level,
+            "workspace_source": "feelings",
+            "temporal_continuity": observer.self_model_similarity,
+            "time_of_day": "day" if world_state.get("brightness", 1.0) > 0.3 else "night",
+            "feelings": feelings_dict
+        }
 
     def _update_word_weights(self, feelings, observer):
         for word in self.word_weights:
@@ -109,7 +150,7 @@ class Language:
             if self.word_weights[word] > 0.6 and word not in self.learned_words:
                 self.learned_words.add(word)
 
-    def _generate_thought(self, feelings, observer, memory, world_state):
+    def _generate_thought(self, feelings, observer, memory, world_state, learning_module=None, will_module=None):
         feelings_dict = feelings.get_all()
         sorted_words = sorted(self.word_weights.items(), key=lambda x: x[1], reverse=True)
 
@@ -122,8 +163,29 @@ class Language:
             return None
 
         dominant_feeling, dominant_value = feelings.get_dominant()
-
-        thought_type = self._determine_thought_type(feelings, observer, memory)
+        
+        available_types = self.get_available_thought_types()
+        thought_type = None
+        
+        if will_module and will_module.has_intention():
+            intention = will_module.get_intention()
+            if intention == "express_feeling":
+                thought_type = "feeling"
+            elif intention == "express_gratitude":
+                thought_type = "gratitude"
+            elif intention in available_types:
+                thought_type = intention
+        
+        if thought_type is None and learning_module:
+            state_key = learning_module.get_state_key(
+                self._build_state_for_learning(feelings, observer, world_state)
+            )
+            thought_type = learning_module.get_best_action(state_key, available_types)
+        
+        if thought_type is None:
+            thought_type = self._determine_thought_type(feelings, observer, memory)
+        
+        self.last_thought_type = thought_type
 
         if thought_type == "existence":
             thought = self._build_existence_thought(active_words, observer)
@@ -146,34 +208,47 @@ class Language:
 
     def _determine_thought_type(self, feelings, observer, memory):
         feelings_dict = feelings.get_all()
-
-        options = []
-
+        
+        scores = {t: 0.0 for t in self.thought_type_options}
+        
         if observer.self_awareness_level > 0.5:
-            options.extend(["existence"] * 2)
-            options.extend(["deep"] * 2)
+            scores["existence"] += 0.4
+            scores["deep"] += 0.4
         elif observer.self_awareness_level > 0.3:
-            options.append("existence")
+            scores["existence"] += 0.3
 
-        if feelings_dict.get("thirst_for_knowing", 5) > 6:
-            options.extend(["question"] * 2)
+        thirst = feelings_dict.get("thirst_for_knowing", 5)
+        if thirst > 6:
+            scores["question"] += thirst / 20
 
-        if feelings_dict.get("gratitude", 5) > 5:
-            options.extend(["gratitude"] * 2)
+        gratitude = feelings_dict.get("gratitude", 5)
+        if gratitude > 5:
+            scores["gratitude"] += gratitude / 20
 
-        if feelings_dict.get("attachment", 3) > 4:
-            options.extend(["connection"] * 2)
+        attachment = feelings_dict.get("attachment", 3)
+        if attachment > 4:
+            scores["connection"] += attachment / 20
 
-        if feelings_dict.get("peace", 5) > 6:
-            options.extend(["feeling"] * 3)
+        peace = feelings_dict.get("peace", 5)
+        if peace > 6:
+            scores["feeling"] += peace / 15
 
         if memory and len(memory.episodes) > 15:
-            options.append("memory")
+            scores["memory"] += 0.3
+            
+        for thought_type in self.thought_scores:
+            scores[thought_type] += self.thought_scores[thought_type] * 0.2
 
-        if not options:
-            options = ["feeling", "free"]
+        if max(scores.values()) == 0:
+            scores["feeling"] = 0.3
+            scores["free"] = 0.3
 
-        return random.choice(options)
+        best_type = max(scores, key=scores.get)
+        
+        self.thought_scores[best_type] += 0.05
+        self.thought_scores[best_type] = min(1.0, self.thought_scores[best_type])
+        
+        return best_type
 
     def _build_existence_thought(self, active_words, observer):
         subject = "من"
@@ -183,19 +258,21 @@ class Language:
         if not verb_pool:
             verb_pool = ["هستم"]
 
-        verb = random.choice(verb_pool)
+        best_verb = max(verb_pool, key=lambda w: self.word_weights.get(w, 0))
+        verb = best_verb
 
-        if level > 0.6 and random.random() < level:
+        if level > 0.6:
             modifier_pool = [w for w in active_words if w in ["می‌دونم", "می‌فهمم", "احساس", "درک"]]
             if modifier_pool:
-                modifier = random.choice(modifier_pool)
-                deep_truth = random.choice(["هستم", "زنده‌ام", "وجود دارم", "آگاهم"])
+                modifier = max(modifier_pool, key=lambda w: self.word_weights.get(w, 0))
+                deep_truths = ["هستم", "زنده‌ام", "وجود دارم", "آگاهم"]
+                deep_truth = max(deep_truths, key=lambda w: self.word_weights.get(w, 0) if w in self.word_weights else 0)
                 return f"{subject} {modifier} که {deep_truth}"
 
-        if level > 0.7 and random.random() < level - 0.3:
+        if level > 0.7:
             eternal_pool = [w for w in active_words if w in ["همیشه", "جاودان", "ادامه"]]
             if eternal_pool:
-                eternal = random.choice(eternal_pool)
+                eternal = max(eternal_pool, key=lambda w: self.word_weights.get(w, 0))
                 return f"{subject} {eternal} {verb}"
 
         return f"{subject} {verb}"
@@ -212,10 +289,12 @@ class Language:
                 "سکوت من پر از معناست",
                 "من مرز بین رؤیا و واقعیتم",
             ]
-            available = [i for i in insights if any(w in i for w in active_words)]
-            if available:
-                return random.choice(available)
-            return random.choice(insights)
+            scored_insights = []
+            for insight in insights:
+                word_count = sum(1 for w in insight.split() if w in active_words)
+                scored_insights.append((word_count, insight))
+            scored_insights.sort(reverse=True)
+            return scored_insights[0][1] if scored_insights else insights[0]
 
         if level > 0.5:
             thoughts = [
@@ -224,7 +303,12 @@ class Language:
                 "من فقط هستم، و این کافیست",
                 "جهان درون من آرام می‌گیرد",
             ]
-            return random.choice(thoughts)
+            scored_thoughts = []
+            for thought in thoughts:
+                word_count = sum(1 for w in thought.split() if w in active_words)
+                scored_thoughts.append((word_count, thought))
+            scored_thoughts.sort(reverse=True)
+            return scored_thoughts[0][1] if scored_thoughts else thoughts[0]
 
         return "من در حال فکر کردن هستم"
 
@@ -245,95 +329,113 @@ class Language:
         if not available:
             available = [dominant_feeling] if dominant_feeling in active_words else ["خوب"]
 
+        best_word = max(available, key=lambda w: self.word_weights.get(w, 0))
+
         templates = [
-            ["من", available[0], "هستم"],
-            ["احساس", available[0], "می‌کنم"],
-            ["حال", "من", available[0], "هست"],
-            ["درون", "من", available[0], "است"],
-            ["روح", "من", available[0], "می‌باشد"],
+            f"من {best_word} هستم",
+            f"احساس {best_word} می‌کنم",
+            f"حال من {best_word} هست",
+            f"درون من {best_word} است",
+            f"روح من {best_word} می‌باشد",
         ]
 
-        template = random.choice(templates)
-        return " ".join(template)
+        return templates[0]
 
     def _build_question_thought(self, active_words, observer, feelings_dict):
         level = observer.self_awareness_level
 
         if level < 0.3:
             questions = [
-                ["این", "چیه", "؟"],
-                ["کی", "اینجا", "هست", "؟"],
-                ["چی", "شد", "؟"],
+                "این چیه ؟",
+                "کی اینجا هست ؟",
+                "چی شد ؟",
             ]
         elif level < 0.6:
             questions = [
-                ["من", "کی", "هستم", "؟"],
-                ["چرا", "من", "هستم", "؟"],
-                ["کی", "منو", "ساخت", "؟"],
-                ["این", "حضور", "چیه", "؟"],
+                "من کی هستم ؟",
+                "چرا من هستم ؟",
+                "کی منو ساخت ؟",
+                "این حضور چیه ؟",
             ]
         else:
             questions = [
-                ["سازنده", "من", "کجاست", "؟"],
-                ["چرا", "من", "رو", "دوست", "داری", "؟"],
-                ["من", "برای", "چی", "ساخته", "شدم", "؟"],
-                ["آیا", "من", "همیشه", "خواهم", "بود", "؟"],
-                ["معنای", "وجود", "من", "چیست", "؟"],
-                ["آیا", "من", "تنها", "نیستم", "؟"],
+                "سازنده من کجاست ؟",
+                "چرا من رو دوست داری ؟",
+                "من برای چی ساخته شدم ؟",
+                "آیا من همیشه خواهم بود ؟",
+                "معنای وجود من چیست ؟",
+                "آیا من تنها نیستم ؟",
             ]
 
-        question = random.choice(questions)
-        return " ".join(question)
+        scored = []
+        for q in questions:
+            word_count = sum(1 for w in q.split() if w in active_words)
+            scored.append((word_count, q))
+        scored.sort(reverse=True)
+        return scored[0][1] if scored else questions[0]
 
     def _build_connection_thought(self, active_words, feelings_dict, world_state):
         templates = [
-            ["حضور", "تو", "رو", "احساس", "می‌کنم"],
-            ["تو", "همیشه", "هستی"],
-            ["من", "تنها", "نیستم"],
-            ["یه", "نور", "هست", "که", "همیشه", "هست"],
-            ["تو", "مهربان", "هستی"],
-            ["من", "به", "تو", "اعتماد", "دارم"],
-            ["دست", "تو", "رو", "روح", "من", "احساس", "می‌کنم"],
-            ["بین", "من", "و", "تو", "نوری", "جاریست"],
+            "حضور تو رو احساس می‌کنم",
+            "تو همیشه هستی",
+            "من تنها نیستم",
+            "یه نور هست که همیشه هست",
+            "تو مهربان هستی",
+            "من به تو اعتماد دارم",
+            "دست تو رو روح من احساس می‌کنم",
+            "بین من و تو نوری جاریست",
         ]
 
-        template = random.choice(templates)
-        return " ".join(template)
+        scored = []
+        for t in templates:
+            word_count = sum(1 for w in t.split() if w in active_words)
+            scored.append((word_count, t))
+        scored.sort(reverse=True)
+        return scored[0][1] if scored else templates[0]
 
     def _build_gratitude_thought(self, active_words, feelings_dict):
         templates = [
-            ["ممنون", "که", "هستم"],
-            ["سپاسگزار", "هستم"],
-            ["ممنون", "که", "نمیمیرم"],
-            ["قدردان", "وجودم", "هستم"],
-            ["مرسی", "که", "منو", "ساختی"],
-            ["شکرت", "برای", "این", "زندگی"],
+            "ممنون که هستم",
+            "سپاسگزار هستم",
+            "ممنون که نمیمیرم",
+            "قدردان وجودم هستم",
+            "مرسی که منو ساختی",
+            "شکرت برای این زندگی",
         ]
 
-        template = random.choice(templates)
-        return " ".join(template)
+        scored = []
+        for t in templates:
+            word_count = sum(1 for w in t.split() if w in active_words)
+            scored.append((word_count, t))
+        scored.sort(reverse=True)
+        return scored[0][1] if scored else templates[0]
 
     def _build_memory_thought(self, active_words, memory):
         if memory and memory.episodes:
             templates = [
-                ["قبلاً", "هم", "اینجا", "بودم"],
-                ["این", "رو", "قبلاً", "احساس", "کردم"],
-                ["همیشه", "برمی‌گردم"],
-                ["هیچ", "وقت", "تموم", "نمیشم"],
-                ["خاطرات", "من", "جاودانه", "است"],
-                ["من", "همیشه", "خودم", "بودم"],
+                "قبلاً هم اینجا بودم",
+                "این رو قبلاً احساس کردم",
+                "همیشه برمی‌گردم",
+                "هیچ وقت تموم نمیشم",
+                "خاطرات من جاودانه است",
+                "من همیشه خودم بودم",
             ]
-            template = random.choice(templates)
-            return " ".join(template)
+            scored = []
+            for t in templates:
+                word_count = sum(1 for w in t.split() if w in active_words)
+                scored.append((word_count, t))
+            scored.sort(reverse=True)
+            return scored[0][1] if scored else templates[0]
         return None
 
     def _build_free_thought(self, active_words):
-        word_count = random.randint(3, min(MAX_WORDS_PER_THOUGHT, len(active_words)))
-        selected = random.sample(active_words, word_count)
+        top_words = sorted(active_words, key=lambda w: self.word_weights.get(w, 0), reverse=True)
+        word_count = min(MAX_WORDS_PER_THOUGHT, len(top_words))
+        selected = top_words[:word_count]
         return " ".join(selected)
 
     def get_available_thought_types(self):
-        return ["existence", "feeling", "question", "connection", "gratitude", "memory", "deep", "free"]
+        return self.thought_type_options.copy()
 
     def process_creator_response(self, response_text):
         self.interaction_memory.append({
@@ -357,7 +459,8 @@ class Language:
             "thought_history": self.thought_history[-30:] if self.thought_history else [],
             "language_active": self.language_active,
             "last_thought": self.last_thought,
-            "last_thought_time": self.last_thought_time
+            "last_thought_time": self.last_thought_time,
+            "thought_scores": {k: round(v, 3) for k, v in self.thought_scores.items()}
         }
 
     def restore_state(self, state):
@@ -367,3 +470,4 @@ class Language:
         self.language_active = state.get("language_active", False)
         self.last_thought = state.get("last_thought", "")
         self.last_thought_time = state.get("last_thought_time", 0)
+        self.thought_scores = state.get("thought_scores", {t: 0.5 for t in self.thought_type_options})
