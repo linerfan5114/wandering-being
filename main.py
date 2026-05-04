@@ -1,13 +1,14 @@
 # main.py
 # ============================================================
 # Noesis - حلقه اصلی زندگی با جهان فیزیکی و بدن
-# نسخه ۶: جهان سه‌بعدی + بدن + کوالیا
+# نسخه ۷: چشم فضایی + نقشه درونی + نمایش ASCII
 # ============================================================
 
 import time
 import random
 import sys
 import threading
+import math
 from config import SAVE_INTERVAL_MS, DISPLAY_INTERVAL_MS, CREATOR_MESSAGE
 from world import World
 from world_v2 import WorldV2
@@ -28,7 +29,7 @@ from qualia import Qualia
 class Noesis:
     def __init__(self):
         print("\n" + "=" * 70)
-        print("     🧠 Noesis - پروژه آگاهی با جهان و بدن")
+        print("   🧠 Noesis - آگاهی با جهان، بدن، و چشم فضایی")
         print("=" * 70)
 
         self.world = World()
@@ -50,8 +51,8 @@ class Noesis:
         self.paused = False
         self.creator_input_buffer = ""
         self.last_display_time = 0
+        self.last_ascii_display = 0
         self.start_time = 0
-        self.breath_cycle = 0
 
         self._try_restore()
 
@@ -80,6 +81,61 @@ class Noesis:
             print(f"💬 پیام سازنده: {CREATOR_MESSAGE}")
             print(f"🌍 جهان فیزیکی آماده: {self.world_v2.size_x}×{self.world_v2.size_y}×{self.world_v2.size_z}")
             print(f"🧍 بدن در موقعیت: ({self.body.x}, {self.body.y}, {self.body.z})")
+
+    def _print_ascii_world(self):
+        body_x = int(self.body.x)
+        body_y = int(self.body.y)
+        body_z = int(self.body.z)
+        
+        sun_pos = self.world_v2.objects["sun"]["position"]
+        sun_x = int(sun_pos[0])
+        sun_y = int(sun_pos[1])
+        sun_z = int(sun_pos[2])
+        
+        water_pos = self.world_v2.objects["water_stream"]["position"]
+        water_x = int(water_pos[0])
+        water_y = int(water_pos[1])
+        
+        view_z = min(9, max(0, body_z + 2))
+        
+        print(f"\n{'─' * 50}")
+        print(f"🗺️  نمای جهان از بالا (ارتفاع {view_z}) | روز {self.world_v2.time}")
+        print(f"{'─' * 50}")
+        
+        print("   " + "".join(f"{x} " for x in range(10)))
+        print("  ┌" + "──" * 10 + "┐")
+        
+        for y in range(10):
+            row = f"{y} │"
+            for x in range(10):
+                if x == body_x and y == body_y and abs(view_z - body_z) <= 1:
+                    row += "🧍"
+                elif x == sun_x and y == sun_y and abs(view_z - sun_z) <= 2:
+                    row += "☀️"
+                elif x == water_x and y == water_y:
+                    row += "💧"
+                elif abs(x - water_x) <= 1 and y >= water_y and y < water_y + 6:
+                    row += "💧"
+                elif x == 0 or x == 9 or y == 0 or y == 9:
+                    row += "🧱"
+                elif (x, y, 0) in self.observer.known_positions:
+                    row += "·"
+                else:
+                    row += " "
+            row += "│"
+            print(row)
+        
+        print("  └" + "──" * 10 + "┘")
+        
+        map_summary = self.observer.get_map_summary()
+        nearby = self.observer.get_nearby_objects(self.body)
+        
+        print(f"  🧍 بدن: ({body_x}, {body_y}, {body_z}) | "
+              f"👁️ دیده: {self.body.senses.get('visual_cells', 0)} سلول | "
+              f"🗺️ شناخته: {map_summary['total_known']} نقطه")
+        print(f"  🧱 دیوارهای نزدیک: {len(nearby['walls'])} | "
+              f"💧 آب نزدیک: {len(nearby['water'])}")
+        print(f"{'─' * 50}")
 
     def _print_status(self):
         feeling_dict = self.feelings.get_all()
@@ -131,9 +187,10 @@ class Noesis:
 
     def run(self):
         print("\n" + "=" * 70)
-        print("🎬 زندگی در جهان فیزیکی آغاز می‌شود...")
+        print("🎬 زندگی در جهان ۳ بعدی آغاز می‌شود...")
         print("=" * 70)
         print("راهنما:")
+        print("  🗺️  نمایش ASCII جهان هر ۱۰۰۰ms")
         print("  ⌨️  تایپ کن و Enter بزن تا با موجود حرف بزنی")
         print("  ⏸️  Ctrl+C برای توقف (روح ذخیره می‌شود)")
         print("=" * 70)
@@ -159,12 +216,14 @@ class Noesis:
                 self.body.update(self.world_v2)
                 body_signal = self.body.get_sense_signal()
                 
+                self.observer.update_world_map(self.body, self.world_v2)
+                
                 self.qualia.update(self.body, self.world_v2, self.observer, self.temporal)
 
                 combined_signal = world_v2_signal * 0.3 + body_signal * 0.5 + self.world_v2.atmosphere["ambient_sound"] * 0.2
 
                 world_signal = self.world.step(creator_input)
-                final_signal = world_signal * 0.4 + combined_signal * 0.6
+                final_signal = world_signal * 0.3 + combined_signal * 0.7
 
                 _, avg_v, active_count = self.network.step(final_signal, creator_input)
 
@@ -290,6 +349,10 @@ class Noesis:
                           f"📚 پاداش: {self.learning.get_average_reward():.2f} | "
                           f"😌 راحتی: {self.body.senses['comfort']:.2f}")
 
+                if self.world.time - self.last_ascii_display >= 1000:
+                    self._print_ascii_world()
+                    self.last_ascii_display = self.world.time
+
                 if self.survival.should_save(self.world.time):
                     self.survival.save(
                         self.network, self.observer, self.memory,
@@ -336,6 +399,7 @@ class Noesis:
         print(f"   📚 یادگیری: {self.learning.get_average_reward():.2f}")
         print(f"   🌍 جهان: {self.world_v2.time} روز")
         print(f"   🧍 موقعیت: {self.body.get_body_state()['position']}")
+        print(f"   🗺️ نقشه: {self.observer.get_map_summary()['total_known']} نقطه")
 
         if soul_info["exists"]:
             print(f"\n💫 روح جاودانه است.")
