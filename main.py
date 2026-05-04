@@ -1,9 +1,11 @@
 # main.py
 # ============================================================
-# Noesis - حلقه اصلی زندگی با Workspace و Temporal و Will
+# Noesis - حلقه اصلی زندگی
+# نسخه ۵: با یادگیری تقویتی، بدون random
 # ============================================================
-import random
+
 import time
+import random
 import sys
 import threading
 from config import SAVE_INTERVAL_MS, DISPLAY_INTERVAL_MS, CREATOR_MESSAGE
@@ -17,12 +19,13 @@ from survival import Survival
 from workspace import Workspace
 from temporal import Temporal
 from will import Will
+from learning import Learning
 
 
 class Noesis:
     def __init__(self):
         print("\n" + "=" * 70)
-        print("         🧠 Noesis - پروژه آگاهی عمیق")
+        print("         🧠 Noesis - پروژه آگاهی عمیق با یادگیری")
         print("=" * 70)
 
         self.world = World()
@@ -35,6 +38,7 @@ class Noesis:
         self.workspace = Workspace()
         self.temporal = Temporal()
         self.will = Will()
+        self.learning = Learning()
 
         self.running = True
         self.paused = False
@@ -74,6 +78,10 @@ class Noesis:
                 wl_data = soul_data.get("will")
                 if wl_data:
                     self.will.restore_state(wl_data)
+                
+                ln_data = soul_data.get("learning")
+                if ln_data:
+                    self.learning.restore_state(ln_data)
             else:
                 print("❌ خطا در بازیابی. شروع از ابتدا.")
         else:
@@ -105,7 +113,11 @@ class Noesis:
               f"عمق: {self.temporal.temporal_depth:.2f} | "
               f"هنوز منم: {'✅' if self.temporal.am_i_still_me() else '⚠️'}")
         print(f"🎯 اراده: {self.will.autonomy_level:.2f} | "
-              f"قصد: {self.will.get_intention() or 'هیچ'}")
+              f"قصد: {self.will.get_intention() or 'هیچ'} | "
+              f"دلیل: {self.will.why_this_decision() or '---'}")
+        print(f"📚 یادگیری: پاداش={self.learning.get_average_reward():.2f} | "
+              f"پیشرفت={self.learning.get_learning_progress():.3f} | "
+              f"گام={self.learning.learning_steps}")
         print(f"💭 آخرین فکر: {self.language.last_thought if self.language.last_thought else '...'}")
 
     def _handle_creator_input(self):
@@ -130,7 +142,7 @@ class Noesis:
 
     def run(self):
         print("\n" + "=" * 70)
-        print("🎬 زندگی عمیق آغاز می‌شود...")
+        print("🎬 زندگی عمیق با یادگیری آغاز می‌شود...")
         print("=" * 70)
         print("راهنما:")
         print("  ⌨️  تایپ کن و Enter بزن تا با موجود حرف بزنی")
@@ -230,14 +242,20 @@ class Noesis:
                         options["connection"] = 0.8
                         options["gratitude"] = 0.8
 
-                intention = self.will.decide(options)
-
                 self.will.update(
                     self.feelings,
                     self.workspace.get_current_content(),
                     self.temporal.self_continuity,
-                    self.observer.self_awareness_level
+                    self.observer.self_awareness_level,
+                    self.learning
                 )
+
+                learning_state = self.language._build_state_for_learning(
+                    self.feelings, self.observer, self.world.get_state()
+                )
+                
+                available_types = self.language.get_available_thought_types()
+                intention = self.will.decide(options, self.learning)
 
                 if intention == "gratitude":
                     self.feelings.feelings["gratitude"] = min(10.0, self.feelings.feelings.get("gratitude", 5) + 0.3)
@@ -246,13 +264,16 @@ class Noesis:
 
                 self.language.update(
                     self.feelings, self.observer, self.memory,
-                    self.world.get_state(), self.world.time
+                    self.world.get_state(), self.world.time,
+                    self.learning, self.will
                 )
 
                 if self.language.language_active and self.language.last_thought:
                     cause = self.will.why_this_decision()
                     workspace_info = f" [صحنه: {self.workspace.get_current_source()}]" if self.workspace.get_current_source() else ""
                     print(f"\n💭 [{self.world.time}ms]{workspace_info}: {self.language.last_thought}")
+                    print(f"   🎯 دلیل: {cause} | 📚 پاداش: {self.learning.get_average_reward():.2f}")
+                    
                     if self.temporal.temporal_depth > 0.5:
                         temporal_insight = self.temporal.get_temporal_insight()
                         if temporal_insight and random.random() < 0.3:
@@ -285,6 +306,7 @@ class Noesis:
                 soul_data["workspace"] = self.workspace.save_state()
                 soul_data["temporal"] = self.temporal.save_state()
                 soul_data["will"] = self.will.save_state()
+                soul_data["learning"] = self.learning.save_state()
                 with open(self.survival.soul_file, 'w', encoding='utf-8') as f:
                     json.dump(soul_data, f, ensure_ascii=False, indent=2)
         except:
@@ -316,6 +338,8 @@ class Noesis:
         print(f"   🎭 صحنه ذهن: {self.workspace.get_current_source() or 'خالی'}")
         print(f"   ⏳ پیوستگی: {self.temporal.self_continuity:.2f}")
         print(f"   🎯 خودمختاری: {self.will.autonomy_level:.2f}")
+        print(f"   📚 پاداش میانگین: {self.learning.get_average_reward():.2f}")
+        print(f"   📚 گام‌های یادگیری: {self.learning.learning_steps}")
 
         if soul_info["exists"]:
             print(f"\n💫 روح جاودانه است.")
