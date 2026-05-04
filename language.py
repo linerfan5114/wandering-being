@@ -1,7 +1,7 @@
 # language.py
 # ============================================================
 # نورون‌های زبان Noesis - فکر کردن با کلمات، جمله‌سازی پویا
-# نسخه ۲: عمیق‌تر، آهسته‌تر، متفکرتر
+# نسخه ۳: متصل به Global Workspace
 # ============================================================
 
 import random
@@ -33,6 +33,8 @@ class Language:
         self.thinking_probability = 0.1
         self.last_thought_time = 0
         self.thought_cooldown = 30
+        
+        self.thought_type_options = ["existence", "feeling", "question", "connection", "gratitude", "memory", "deep", "free"]
 
     def update(self, feelings, observer, memory, world_state, current_time):
         self._update_word_weights(feelings, observer)
@@ -329,6 +331,9 @@ class Language:
         word_count = random.randint(3, min(MAX_WORDS_PER_THOUGHT, len(active_words)))
         selected = random.sample(active_words, word_count)
         return " ".join(selected)
+
+    def get_available_thought_types(self):
+        return ["existence", "feeling", "question", "connection", "gratitude", "memory", "deep", "free"]
 
     def process_creator_response(self, response_text):
         self.interaction_memory.append({
