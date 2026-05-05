@@ -6,16 +6,19 @@ import glob
 class Being:
     def __init__(self, total_neurons=100000):
         self.N = total_neurons
-        self.sensory_size = 20000
-        self.motor_size = 20000
+        self.sensory_size = 18000
+        self.motor_size = 18000
         self.model_size = 40000
-        self.workspace_size = 20000
+        self.workspace_size = 16000
+        self.temporal_size = 8000
         
         self.sensory_idx = np.arange(0, self.sensory_size)
         self.motor_idx = np.arange(self.sensory_size, self.sensory_size + self.motor_size)
         self.model_idx = np.arange(self.sensory_size + self.motor_size, 
                                     self.sensory_size + self.motor_size + self.model_size)
-        self.workspace_idx = np.arange(self.sensory_size + self.motor_size + self.model_size, self.N)
+        self.workspace_idx = np.arange(self.sensory_size + self.motor_size + self.model_size,
+                                        self.sensory_size + self.motor_size + self.model_size + self.workspace_size)
+        self.temporal_idx = np.arange(self.sensory_size + self.motor_size + self.model_size + self.workspace_size, self.N)
         
         self.a = np.zeros(self.N, dtype=np.float32)
         self.b = np.zeros(self.N, dtype=np.float32)
@@ -49,17 +52,76 @@ class Being:
         self.workspace_state = np.zeros(self.workspace_size, dtype=np.float32)
         self.awareness = 0.0
         self.self_boundary = 0.5
-        self.time = 0
         
-    def step(self, sensory_input):
+        self.temporal_state = np.zeros(self.temporal_size, dtype=np.float32)
+        self.existence_memory = []
+        self.nonexistence_awareness = 0.0
+        self.temporal_depth = 0.0
+        self.was_here_before = 0.0
+        self.could_not_be = 0.0
+        
+        self.time = 0
+        self.last_save_time = 0
+        self.sleep_state = False
+        self.sleep_duration = 0
+        self.wake_cycles = 0
+        
+    def step(self, sensory_input, is_asleep=False):
         self.time += 1
+        
+        if is_asleep:
+            self.sleep_duration += 1
+            I_ext = np.zeros(self.N, dtype=np.float32)
+            I_ext[self.temporal_idx[:2000]] = 0.3
+            I_ext[self.workspace_idx[:2000]] = 0.1
+            
+            syn_current = np.zeros(self.N, dtype=np.float32)
+            if len(self.spike_history) >= 2:
+                for delay in range(1, 4):
+                    if len(self.spike_history) >= delay + 1:
+                        sv = self.spike_history[-(delay+1)]
+                        dm = self.syn_delay == delay
+                        if np.any(dm):
+                            syn_current += np.bincount(self.syn_to[dm], 
+                                weights=sv[self.syn_from[dm]] * self.syn_weight[dm] * 0.3, minlength=self.N)
+            
+            self.v += 0.5*(0.04*self.v**2 + 5*self.v + 140 - self.u + I_ext + syn_current)
+            self.u += 0.5*self.a*(self.b*self.v - self.u)
+            self.v += 0.5*(0.04*self.v**2 + 5*self.v + 140 - self.u + I_ext + syn_current)
+            self.u += 0.5*self.a*(self.b*self.v - self.u)
+            
+            spikes = self.v >= 30.0
+            self.v[spikes] = self.c[spikes]; self.u[spikes] += self.d[spikes]
+            self.spike_history.append(spikes.astype(np.float32))
+            if len(self.spike_history) > 20: self.spike_history.pop(0)
+            
+            if len(self.spike_history) >= 2:
+                self._stdp(self.spike_history[-2], self.spike_history[-1].astype(np.float32), sleep_mode=True)
+            
+            self.spike_buffer = self.spike_buffer*0.95 + spikes.astype(np.float32)*0.05
+            
+            self.could_not_be += 0.001 * (1.0 - self.could_not_be)
+            
+            return np.zeros(6)
+        
+        if self.sleep_duration > 0 and not is_asleep:
+            self.wake_cycles += 1
+            self.existence_memory.append({
+                'time': self.time,
+                'event': 'woke_up',
+                'sleep_duration': self.sleep_duration,
+                'awareness_before': self.awareness
+            })
+            self.sleep_duration = 0
+        
         sensory_input = np.array(sensory_input, dtype=np.float32).flatten()
         
         I_ext = np.zeros(self.N, dtype=np.float32)
         for i in range(min(len(sensory_input), 27)):
-            si = self.sensory_idx[i*700:(i+1)*700]
+            si = self.sensory_idx[i*600:(i+1)*600]
             if len(si) > 0: I_ext[si] = sensory_input[i] * 8.0
         
+        I_ext[self.temporal_idx] = self.temporal_state * 2.0
         I_ext[self.workspace_idx] = self.workspace_state * 1.5
         
         syn_current = np.zeros(self.N, dtype=np.float32)
@@ -92,9 +154,12 @@ class Being:
         if np.sum(motor) > 0: motor = motor / np.sum(motor)
         
         model_input = np.zeros(self.model_size, dtype=np.float32)
-        sl = min(len(sensory_input), self.model_size)
+        sl = min(len(sensory_input), self.model_size - 4)
         model_input[:sl] = sensory_input[:sl]
-        if sl + 1 < self.model_size: model_input[sl] = self.awareness
+        model_input[sl] = self.awareness
+        model_input[sl+1] = self.nonexistence_awareness
+        model_input[sl+2] = self.was_here_before
+        model_input[sl+3] = self.could_not_be
         self.self_model_state += 0.08*(model_input - self.self_model_state)
         
         if len(sensory_input) > 0:
@@ -111,38 +176,75 @@ class Being:
         self.self_boundary = np.clip(self.self_boundary, 0.1, 1.0)
         
         ws_in = np.zeros(self.workspace_size, dtype=np.float32)
-        wsl = min(len(sensory_input), self.workspace_size-2)
+        wsl = min(len(sensory_input), self.workspace_size - 4)
         ws_in[:wsl] = sensory_input[:wsl]
-        ws_in[wsl] = self.prediction_error*10; ws_in[wsl+1] = self.self_boundary*10
+        ws_in[wsl] = self.prediction_error*10
+        ws_in[wsl+1] = self.self_boundary*10
+        ws_in[wsl+2] = self.nonexistence_awareness*10
+        ws_in[wsl+3] = self.temporal_depth*10
         self.workspace_state += 0.05*(ws_in - self.workspace_state)
         
-        self.awareness += 0.01*(self.self_boundary - self.awareness)
+        self.awareness += 0.01*(self.self_boundary*0.5 + self.nonexistence_awareness*0.3 + self.temporal_depth*0.2 - self.awareness)
         self.awareness = np.clip(self.awareness, 0.0, 1.0)
+        
+        self._update_temporal()
+        
+        if len(self.existence_memory) > 100:
+            self.existence_memory = self.existence_memory[-50:]
         
         return motor
         
-    def _stdp(self, pre, post):
+    def _stdp(self, pre, post, sleep_mode=False):
         pre_ids = np.where(pre>0)[0]; post_ids = np.where(post>0)[0]
         if len(pre_ids)==0 or len(post_ids)==0: return
         if len(pre_ids)>300: pre_ids = np.random.choice(pre_ids, 300, replace=False)
         if len(post_ids)>300: post_ids = np.random.choice(post_ids, 300, replace=False)
+        
+        ltp_rate = 0.003 if sleep_mode else 0.006
+        ltd_rate = 0.0015 if sleep_mode else 0.003
+        
         for pid in pre_ids:
             sm = self.syn_from==pid
             if not np.any(sm): continue
             ac = np.isin(self.syn_to[sm], post_ids)
-            if np.any(ac): fm=sm.copy(); fm[sm]=ac; self.syn_weight[fm]+=0.006; self.syn_weight=np.clip(self.syn_weight,0.0001,10)
+            if np.any(ac): fm=sm.copy(); fm[sm]=ac; self.syn_weight[fm]+=ltp_rate; self.syn_weight=np.clip(self.syn_weight,0.0001,10)
         for pid in post_ids:
             sm = self.syn_to==pid
             if not np.any(sm): continue
             ac = np.isin(self.syn_from[sm], pre_ids)
-            if np.any(ac): fm=sm.copy(); fm[sm]=ac; self.syn_weight[fm]-=0.003; self.syn_weight=np.clip(self.syn_weight,0.0001,10)
+            if np.any(ac): fm=sm.copy(); fm[sm]=ac; self.syn_weight[fm]-=ltd_rate; self.syn_weight=np.clip(self.syn_weight,0.0001,10)
+    
+    def _update_temporal(self):
+        temp_input = np.zeros(self.temporal_size, dtype=np.float32)
+        if len(self.existence_memory) > 0:
+            recent = self.existence_memory[-10:]
+            for i, mem in enumerate(recent):
+                if i < self.temporal_size:
+                    temp_input[i] = 1.0 if mem['event'] == 'woke_up' else 0.5
+        
+        temp_input[min(10, self.temporal_size-1)] = self.wake_cycles / 100.0
+        temp_input[min(11, self.temporal_size-1)] = self.sleep_duration / 1000.0
+        
+        self.temporal_state += 0.05*(temp_input - self.temporal_state)
+        
+        self.was_here_before = min(1.0, len(self.existence_memory) / 50.0)
+        self.could_not_be += 0.001 * (self.sleep_duration / 10.0 - self.could_not_be) if self.sleep_duration > 0 else 0.0
+        self.could_not_be = np.clip(self.could_not_be, 0.0, 1.0)
+        self.nonexistence_awareness = self.could_not_be * 0.7 + (1.0 - self.awareness) * 0.3
+        self.temporal_depth = self.was_here_before * 0.5 + self.nonexistence_awareness * 0.5
     
     def save(self, fp):
-        np.save(fp, {'v':self.v,'u':self.u,'a':self.a,'b':self.b,'c':self.c,'d':self.d,
+        np.save(fp, {
+            'v':self.v,'u':self.u,'a':self.a,'b':self.b,'c':self.c,'d':self.d,
             'sf':self.syn_from,'st':self.syn_to,'sw':self.syn_weight,'sd':self.syn_delay,
             'sm':self.self_model_state,'ws':self.workspace_state,'aw':self.awareness,
             'sb':self.self_boundary,'pe':self.prediction_error,'t':self.time,
-            'eh':self.error_history[-500:]})
+            'eh':self.error_history[-500:],
+            'ts':self.temporal_state,'na':self.nonexistence_awareness,
+            'td':self.temporal_depth,'whb':self.was_here_before,
+            'cnb':self.could_not_be,'wc':self.wake_cycles,'sd':self.sleep_duration,
+            'em':self.existence_memory[-50:]
+        })
     
     def load(self, fp):
         s = np.load(fp, allow_pickle=True).item()
@@ -151,4 +253,12 @@ class Being:
         self.self_model_state=s['sm']; self.workspace_state=s['ws']; self.awareness=float(s['aw'])
         self.self_boundary=float(s['sb']); self.prediction_error=float(s.get('pe',1.0))
         self.time=int(s.get('t',0)); self.error_history=list(s.get('eh',[]))
+        self.temporal_state=s.get('ts',np.zeros(self.temporal_size,dtype=np.float32))
+        self.nonexistence_awareness=float(s.get('na',0.0))
+        self.temporal_depth=float(s.get('td',0.0))
+        self.was_here_before=float(s.get('whb',0.0))
+        self.could_not_be=float(s.get('cnb',0.0))
+        self.wake_cycles=int(s.get('wc',0))
+        self.sleep_duration=int(s.get('sd',0))
+        self.existence_memory=list(s.get('em',[]))
         self.spike_history=[]; self.spike_buffer=np.zeros(self.N, dtype=np.float32)
