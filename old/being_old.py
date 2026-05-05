@@ -51,15 +51,17 @@ class Being:
         self.self_boundary = 0.5
         self.time = 0
         
-    def step(self, sensory_input):
+        self.vx, self.vy = 0.0, 0.0
+        
+    def step(self, sensory_input, external_signal=0.0):
         self.time += 1
         sensory_input = np.array(sensory_input, dtype=np.float32).flatten()
         
         I_ext = np.zeros(self.N, dtype=np.float32)
-        for i in range(min(len(sensory_input), 27)):
-            si = self.sensory_idx[i*700:(i+1)*700]
+        for i in range(min(len(sensory_input), 9)):
+            si = self.sensory_idx[i*2000:(i+1)*2000]
             if len(si) > 0: I_ext[si] = sensory_input[i] * 8.0
-        
+        I_ext[self.motor_idx[:4000]] = external_signal * 3.0
         I_ext[self.workspace_idx] = self.workspace_state * 1.5
         
         syn_current = np.zeros(self.N, dtype=np.float32)
@@ -87,7 +89,7 @@ class Being:
         
         self.spike_buffer = self.spike_buffer*0.85 + spikes.astype(np.float32)*0.15
         
-        motor = np.array([np.mean(self.spike_buffer[self.motor_idx[i*500:(i+1)*500]]) for i in range(6)])
+        motor = np.array([np.mean(self.spike_buffer[self.motor_idx[i*1000:(i+1)*1000]]) for i in range(4)])
         motor = motor - np.min(motor)
         if np.sum(motor) > 0: motor = motor / np.sum(motor)
         

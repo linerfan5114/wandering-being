@@ -1,78 +1,74 @@
 # world.py
 import numpy as np
-import tkinter as tk
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import time
 
-class World:
-    def __init__(self, size=20):
+class World3D:
+    def __init__(self, size=15):
         self.size = size
-        self.light_map = np.zeros((size, size), dtype=np.float32)
+        self.light_map = np.zeros((size, size, size), dtype=np.float32)
+        cx, cy, cz = size/2, size/2, size/2
         for x in range(size):
             for y in range(size):
-                dist = np.sqrt((x-size/2)**2 + (y-size/2)**2)
-                self.light_map[x,y] = max(0.0, min(1.0, 1.0 - dist/(size*0.7)))
-
-class Body:
-    def __init__(self, world, x=None, y=None):
-        self.world = world
-        self.x = x if x is not None else world.size//2
-        self.y = y if y is not None else world.size//2
-        self.vx, self.vy = 0.0, 0.0
-
-    def get_visual_field(self):
-        field = []
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                wx, wy = int(self.x+dx), int(self.y+dy)
-                if 0<=wx<self.world.size and 0<=wy<self.world.size:
-                    field.append(self.world.light_map[wx,wy])
-                else:
-                    field.append(0.0)
-        return np.array(field, dtype=np.float32)
-
-    def move(self, dx, dy):
-        nx, ny = self.x + dx*0.3, self.y + dy*0.3
-        if 0 <= nx < self.world.size-1 and 0 <= ny < self.world.size-1:
-            self.x, self.y = nx, ny
-
-class Display:
-    def __init__(self, world, body):
-        self.world = world
-        self.body = body
-        self.root = tk.Tk()
-        self.root.title("Wandering Being")
-        self.cs = 30
-        self.canvas = tk.Canvas(self.root, width=world.size*self.cs+60, height=world.size*self.cs+60, bg='black')
-        self.canvas.pack(pady=10)
-        self.info = tk.Label(self.root, text="", font=("Courier",11), bg='black', fg='white')
-        self.info.pack()
-        self.aware = tk.Label(self.root, text="", font=("Courier",11), bg='black', fg='#ffaa00')
-        self.aware.pack()
+                for z in range(size):
+                    dist = np.sqrt((x-cx)**2 + (y-cy)**2 + (z-cz)**2)
+                    self.light_map[x,y,z] = max(0.0, min(1.0, 1.0 - dist/(size*0.7)))
+        
+        plt.ion()
+        self.fig = plt.figure(figsize=(10, 8))
+        self.ax = self.fig.add_subplot(111, projection='3d')
+        self.ax.set_xlim(0, size)
+        self.ax.set_ylim(0, size)
+        self.ax.set_zlim(0, size)
+        self.ax.set_xlabel('X')
+        self.ax.set_ylabel('Y')
+        self.ax.set_zlabel('Z')
+        self.ax.set_title('Wandering Being - 3D World')
+        
+        self.scatter = None
+        self.being_point = None
+        
+        self._draw_world()
+        
         self.running = True
-        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-
-    def on_close(self):
+        self.fig.canvas.mpl_connect('close_event', self._on_close)
+        
+    def _on_close(self, event):
         self.running = False
-        self.root.destroy()
-
-    def update(self, awareness, boundary, error):
-        if not self.running: return
-        self.canvas.delete("all")
-        for x in range(self.world.size):
-            for y in range(self.world.size):
-                l = self.world.light_map[x,y]
-                g = int(l*180+20)
-                c = f'#{g:02x}{g:02x}{g:02x}'
-                self.canvas.create_rectangle(x*self.cs+30, y*self.cs+30, (x+1)*self.cs+30, (y+1)*self.cs+30, fill=c, outline='#222')
-        bx, by = self.body.x*self.cs+30, self.body.y*self.cs+30
-        self.canvas.create_oval(bx+5, by+5, bx+self.cs-5, by+self.cs-5, fill='#ff4444', outline='white', width=2)
-        for dx in [-1,0,1]:
-            for dy in [-1,0,1]:
-                vx, vy = int(self.body.x+dx), int(self.body.y+dy)
-                if 0<=vx<self.world.size and 0<=vy<self.world.size:
-                    self.canvas.create_rectangle(vx*self.cs+32, vy*self.cs+32, (vx+1)*self.cs+28, (vy+1)*self.cs+28, outline='#fff', width=1, dash=(2,2))
-        self.info.config(text=f"موقعيت: ({self.body.x:.1f}, {self.body.y:.1f}) | خطا: {error:.4f}")
-        self.aware.config(text=f"آگاهي: {awareness:.4f} | مرز خود/جهان: {boundary:.4f}")
-        self.root.update()
-
-    def mainloop(self):
-        self.root.mainloop()
+        
+    def _draw_world(self):
+        xs, ys, zs = np.meshgrid(
+            np.arange(self.size),
+            np.arange(self.size),
+            np.arange(self.size),
+            indexing='ij'
+        )
+        xs = xs.flatten()
+        ys = ys.flatten()
+        zs = zs.flatten()
+        colors = self.light_map.flatten()
+        
+        bright = colors * 0.3 + 0.7
+        rgba = np.zeros((len(xs), 4))
+        rgba[:, 0] = bright * 0.9
+        rgba[:, 1] = bright * 0.7
+        rgba[:, 2] = bright * 0.5
+        rgba[:, 3] = 0.3
+        
+        self.scatter = self.ax.scatter(xs, ys, zs, c=rgba, s=20, marker='o')
+        
+    def render(self, body_x, body_y, body_z, awareness, boundary, error):
+        if self.being_point:
+            self.being_point.remove()
+        
+        self.being_point = self.ax.scatter([body_x], [body_y], [body_z], 
+                                            c='red', s=200, marker='o', edgecolors='white', linewidth=2)
+        
+        self.ax.set_title(
+            f'Awareness: {awareness:.4f} | Self/Other: {boundary:.4f} | Error: {error:.4f} | '
+            f'Pos: ({body_x:.1f}, {body_y:.1f}, {body_z:.1f})'
+        )
+        
+        plt.draw()
+        plt.pause(0.01)
